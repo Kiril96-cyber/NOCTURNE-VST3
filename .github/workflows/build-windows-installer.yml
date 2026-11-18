@@ -1,0 +1,44 @@
+name: Build NOCTURNE Windows VST3 installer
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main" ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2022
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Configure JUCE project
+        run: cmake -S . -B build -A x64
+
+      - name: Build VST3
+        run: cmake --build build --config Release --parallel
+
+      - name: Install Inno Setup
+        run: choco install innosetup --yes --no-progress
+
+      - name: Create installer
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" installer\NOCTURNE.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: NOCTURNE-Setup-Windows-x64
+          path: dist/NOCTURNE_Setup_x64.exe
+          if-no-files-found: error
