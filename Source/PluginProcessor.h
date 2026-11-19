@@ -43,7 +43,7 @@ public:
     void clearNotes();
     int analyseFile(const juce::File&);
     void exportMidi(const juce::File&);
-    bool copyMidiToClipboard();
+    bool copyMidiToClipboard(void* clipboardOwnerWindow);
     juce::File createTemporaryMidiFile();
     void moveNote(int index, int midi, double start);
     void setRecording(bool shouldRecord);
