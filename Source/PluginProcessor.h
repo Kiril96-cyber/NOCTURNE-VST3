@@ -53,6 +53,9 @@ public:
     std::atomic<bool> recording { false };
     std::atomic<double> recordingPositionSeconds { 0.0 };
     std::atomic<bool> trackerResetRequested { false };
+    std::atomic<int> detectedKeyRoot { -1 };
+    std::atomic<int> detectedKeyMode { 0 }; // 0 = major, 1 = minor
+    std::atomic<float> detectedKeyConfidence { 0.0f };
 
     juce::String notesAsText() const;
 
@@ -101,6 +104,8 @@ private:
     float detectPitchYin(const float*, int, float& confidence, double analysisRate) const;
     void acceptPitch(float hz, float confidence, double time, int midiSampleOffset, juce::MidiBuffer& midi);
     void finishLiveNote(double time, int midiSampleOffset, juce::MidiBuffer& midi);
+    void estimateKey(const juce::AudioBuffer<float>& audio, double analysisRate);
+    int analysePolyphonicFile(const juce::AudioBuffer<float>& audio, double analysisRate);
 
     juce::CriticalSection notesLock;
     juce::Array<NoteEvent> notes;
