@@ -292,9 +292,6 @@ void NocturneAudioProcessor::acceptPitch(float hz, float confidence, double time
 void NocturneAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
     juce::ScopedNoDenormals noDenormals;
-    if (trackerResetRequested.exchange(false))
-        liveTracker = {};
-
     const int numSamples = buffer.getNumSamples();
     const int channels = buffer.getNumChannels();
 
@@ -319,6 +316,13 @@ void NocturneAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         recordingPositionSeconds.store(juce::jmax(0.0, elapsedSeconds - recordingStartTime));
     }
     wasRecording = isRecording;
+
+    if (trackerResetRequested.exchange(false))
+    {
+        if (liveTracker.activeMidi >= 0)
+            midi.addEvent(juce::MidiMessage::noteOff(1, liveTracker.activeMidi), 0);
+        liveTracker = {};
+    }
 
     const float speed = parameters.getRawParameterValue("speed")->load();
     const int hopSize = juce::jlimit(512, 1024,
@@ -443,6 +447,43 @@ int NocturneAudioProcessor::analyseFile(const juce::File& file)
                 break;
             }
         }
+    }
+
+    // Post-capture cleanup removes tiny tracking ghosts and merges split sustains.
+    std::vector<NoteEvent> ordered;
+    {
+        const auto captured = getNotesCopy();
+        ordered.reserve((size_t)captured.size());
+        for (const auto& note : captured)
+            if (note.length >= 0.045)
+                ordered.push_back(note);
+    }
+    std::stable_sort(ordered.begin(), ordered.end(),
+        [](const NoteEvent& a, const NoteEvent& b) { return a.start < b.start; });
+
+    juce::Array<NoteEvent> cleaned;
+    for (const auto& note : ordered)
+    {
+        if (!cleaned.isEmpty())
+        {
+            auto& previous = cleaned.getReference(cleaned.size() - 1);
+            const double gap = note.start - (previous.start + previous.length);
+            if (previous.midi == note.midi && gap >= -0.02 && gap <= 0.10)
+            {
+                previous.length = juce::jmax(previous.start + previous.length,
+                                             note.start + note.length) - previous.start;
+                previous.confidence = juce::jmax(previous.confidence, note.confidence);
+                continue;
+            }
+        }
+        cleaned.add(note);
+    }
+
+    {
+        juce::ScopedLock lock(notesLock);
+        notes.clear();
+        notes.addArray(cleaned);
+        detectedCount = notes.size();
     }
     return detectedCount;
 }
