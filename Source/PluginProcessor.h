@@ -51,7 +51,8 @@ public:
     std::atomic<float> currentPitchHz { 0.0f };
     std::atomic<float> inputLevel { 0.0f };
     std::atomic<bool> recording { false };
-    std::atomic<double> recordingPositionSeconds { 0.0 };\n    std::atomic<bool> trackerResetRequested { false };
+    std::atomic<double> recordingPositionSeconds { 0.0 };
+    std::atomic<bool> trackerResetRequested { false };
 
     juce::String notesAsText() const;
 
@@ -118,6 +119,8 @@ private:
 
     std::array<std::atomic<float>, 256> liveWaveform {};
     std::atomic<int> liveWaveformWrite { 0 };
+    float liveWaveformAccumulator = 0.0f;
+    int liveWaveformSamples = 0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(NocturneAudioProcessor)
 };
