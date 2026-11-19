@@ -9,11 +9,14 @@ NOCTURNE is a JUCE-based VST3 audio-to-MIDI plugin with a custom dark-fantasy in
 - Estimate the imported recording's major/minor key from its chroma profile and show the result in the piano-roll footer.
 - Use a denser offline analysis hop and faster transition decisions to retain short vocal syllables and quick note changes.
 - Display the incoming waveform and detected notes while recording.
+- Apply a manually adjustable input gate in dB to both live capture and imported-audio analysis.
 - Close the current note cleanly when recording stops.
 - Stabilize note transitions with confidence gating, pitch smoothing, vibrato tolerance, a configurable transition-stability control, and short-dropout hold.
+- Normalize YIN analysis frames and remove DC before pitch detection to reduce sensitivity to hot input levels.
 - Clean imported MIDI detections by removing tiny ghost notes and merging short split sustains.
 - Optional Chord Mode: map each stable detected root note to a selected major, minor, diminished, augmented, sus2, or sus4 voicing, emitted as simultaneous MIDI notes.
-- Export a Standard MIDI File (.mid), with BPM and quantization controls.
+- Export a Standard MIDI File (.mid), with BPM, quantization, and per-note velocity derived from the source amplitude.
+- Drag the generated `.mid` directly from the plugin into compatible DAW targets, including FL Studio's Piano roll or Channel Rack.
 - Edit note pitch and start time in the plugin piano roll; automatically fit the displayed pitch range to the detected register.
 
 ## Important signal and chord limitations
