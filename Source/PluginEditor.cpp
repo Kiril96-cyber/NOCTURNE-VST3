@@ -575,7 +575,7 @@ void NocturneAudioProcessorEditor::mouseDrag(const juce::MouseEvent& event)
     const double visibleDuration = juce::jmax(0.1, visibleEnd - visibleStart);
 
     const float rowHeight = roll.getHeight() / 24.0f;
-    const int topMidi = 84;
+    const int topMidi = pianoTopMidi();
     const int midi = topMidi - (int)std::floor((event.position.y - roll.getY()) / rowHeight);
     const double start = visibleStart +
         ((event.position.x - roll.getX() - 8.0) / (roll.getWidth() - 16.0)) *
