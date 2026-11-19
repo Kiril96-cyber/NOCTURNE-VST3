@@ -303,11 +303,15 @@ void NocturneAudioProcessorEditor::saveMidi()
 
 void NocturneAudioProcessorEditor::copyNotes()
 {
-    if (processor.copyMidiToClipboard())
-        statusLabel.setText("MIDI COPIED  |  FL PIANO ROLL: SHIFT+CTRL+V",
+    void* ownerWindow = nullptr;
+    if (auto* peer = getPeer())
+        ownerWindow = peer->getNativeHandle();
+
+    if (processor.copyMidiToClipboard(ownerWindow))
+        statusLabel.setText("MIDI COPIED  |  PIANO ROLL: SHIFT+CTRL+V",
                             juce::dontSendNotification);
     else
-        statusLabel.setText("MIDI CLIPBOARD UNAVAILABLE OR NO NOTES",
+        statusLabel.setText("MIDI CLIPBOARD FAILED  |  CHECK NOTES / FOCUS",
                             juce::dontSendNotification);
 }
 
