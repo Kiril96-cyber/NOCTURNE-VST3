@@ -1,5 +1,7 @@
 #pragma once
 #include <JuceHeader.h>
+#include <array>
+#include <limits>
 
 class NocturneAudioProcessor : public juce::AudioProcessor
 {
@@ -42,6 +44,7 @@ public:
     void exportMidi(const juce::File&);
     void moveNote(int index, int midi, double start);
     void setRecording(bool shouldRecord);
+    std::array<float, 256> getLiveWaveformSnapshot() const;
 
     std::atomic<float> bpm { 120.0f };
     std::atomic<int> quantizeDivision { 0 };
@@ -103,6 +106,9 @@ private:
     double elapsedSeconds = 0.0;
     double recordingStartTime = 0.0;
     bool wasRecording = false;
+
+    std::array<std::atomic<float>, 256> liveWaveform {};
+    std::atomic<int> liveWaveformWrite { 0 };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(NocturneAudioProcessor)
 };
