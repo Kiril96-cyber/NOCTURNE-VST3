@@ -26,5 +26,6 @@ private:
     int draggedNote = -1;
     double dragOffsetSeconds = 0.0;
     std::unique_ptr<juce::FileChooser> midiSaveChooser;
+    std::unique_ptr<juce::FileChooser> audioFileChooser;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(NocturneAudioProcessorEditor)
 };
