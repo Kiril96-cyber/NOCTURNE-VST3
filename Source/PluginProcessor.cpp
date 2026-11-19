@@ -288,6 +288,9 @@ void NocturneAudioProcessor::acceptPitch(float hz, float confidence, double time
 void NocturneAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
     juce::ScopedNoDenormals noDenormals;
+    if (trackerResetRequested.exchange(false))
+        liveTracker = {};
+
     const int numSamples = buffer.getNumSamples();
     const int channels = buffer.getNumChannels();
 
@@ -309,7 +312,7 @@ void NocturneAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     else if (!isRecording && wasRecording)
     {
         finishLiveNote(elapsedSeconds - recordingStartTime, 0, midi);
-        recordingPositionSeconds.store(0.0);
+        recordingPositionSeconds.store(juce::jmax(0.0, elapsedSeconds - recordingStartTime));
     }
     wasRecording = isRecording;
 
@@ -362,7 +365,7 @@ void NocturneAudioProcessor::clearNotes()
 {
     juce::ScopedLock lock(notesLock);
     notes.clear();
-    liveTracker = {};
+    trackerResetRequested.store(true);
 }
 
 int NocturneAudioProcessor::analyseFile(const juce::File& file)
