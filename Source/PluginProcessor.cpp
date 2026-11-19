@@ -158,7 +158,7 @@ NocturneAudioProcessor::ChordNotes NocturneAudioProcessor::makeChordNotes(int ro
     return result;
 }
 
-PitchTrackerEvents NocturneAudioProcessor::updatePitchTracker(
+NocturneAudioProcessor::PitchTrackerEvents NocturneAudioProcessor::updatePitchTracker(
     PitchTrackerState& state, float hz, float confidence, double time,
     float accuracy, float glide, float vibrato, float stability)
 {
