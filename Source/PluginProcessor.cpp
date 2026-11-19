@@ -13,10 +13,12 @@ juce::AudioProcessorValueTreeState::ParameterLayout NocturneAudioProcessor::crea
 {
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> p;
     p.push_back(std::make_unique<juce::AudioParameterFloat>("speed", "Read speed", 10.0f, 100.0f, 45.0f));
-    p.push_back(std::make_unique<juce::AudioParameterFloat>("accuracy", "Note accuracy", 0.50f, 0.99f, 0.78f));
+    p.push_back(std::make_unique<juce::AudioParameterFloat>("accuracy", "Note accuracy", 0.50f, 0.93f, 0.75f));
     p.push_back(std::make_unique<juce::AudioParameterFloat>("glide", "Pitch glide", 0.0f, 100.0f, 35.0f));
     p.push_back(std::make_unique<juce::AudioParameterFloat>("vibrato", "Vibrato tolerance", 0.0f, 100.0f, 55.0f));
-    p.push_back(std::make_unique<juce::AudioParameterFloat>("stability", "Transition stability", 0.0f, 100.0f, 65.0f));
+    p.push_back(std::make_unique<juce::AudioParameterFloat>("stability", "Transition stability", 0.0f, 100.0f, 35.0f));
+    p.push_back(std::make_unique<juce::AudioParameterChoice>(
+        "analysisMode", "Analysis mode", juce::StringArray { "VOCAL", "POLYPHONIC" }, 0));
     p.push_back(std::make_unique<juce::AudioParameterChoice>(
         "chordMode", "Chord mode",
         juce::StringArray { "OFF", "MAJOR", "MINOR", "DIMINISHED", "AUGMENTED", "SUS2", "SUS4" }, 0));
@@ -179,7 +181,7 @@ NocturneAudioProcessor::PitchTrackerEvents NocturneAudioProcessor::updatePitchTr
                 state.invalidSince = time;
             }
             // A short dropout or consonant must not split a sustained vowel.
-            const double releaseSeconds = 0.075 + (double)vibrato * 0.0010;
+            const double releaseSeconds = 0.045 + (double)vibrato * 0.00045;
             if (time - state.invalidSince >= releaseSeconds)
             {
                 events.closed = true;
@@ -195,17 +197,19 @@ NocturneAudioProcessor::PitchTrackerEvents NocturneAudioProcessor::updatePitchTr
 
     state.invalidPending = false;
     const float rawMidi = 69.0f + 12.0f * std::log2(hz / 440.0f);
-    const float smoothing = juce::jlimit(0.0f, 0.94f, glide * 0.0065f + vibrato * 0.0035f);
+    const float smoothing = juce::jlimit(0.0f, 0.75f, glide * 0.0030f + vibrato * 0.0020f);
     if (state.smoothedMidi < 0.0f)
         state.smoothedMidi = rawMidi;
     else
         state.smoothedMidi = state.smoothedMidi * smoothing + rawMidi * (1.0f - smoothing);
 
-    const int candidate = juce::jlimit(0, 127, (int)std::round(state.smoothedMidi));
-    const int confirmations = juce::jlimit(2, 8, 2 + (int)std::round(stability * 0.055f));
-    const double minimumSwitchHold = 0.06 + (double)stability * 0.0016;
+    // Use the unsmoothed pitch for transition decisions. Smoothing remains useful
+    // for the display, but should not delay short syllables or quick melodic notes.
+    const int candidate = juce::jlimit(0, 127, (int)std::round(rawMidi));
+    const int confirmations = juce::jlimit(2, 6, 2 + (int)std::round(stability * 0.035f));
+    const double minimumSwitchHold = 0.035 + (double)stability * 0.00065;
 
-    if (state.activeMidi >= 0 && std::abs(state.smoothedMidi - (float)state.activeMidi) < 0.72f)
+    if (state.activeMidi >= 0 && std::abs(rawMidi - (float)state.activeMidi) < 0.58f)
     {
         state.candidateMidi = -1;
         state.candidateFrames = 0;
@@ -488,14 +492,23 @@ int NocturneAudioProcessor::analyseFile(const juce::File& file)
         mono[sample] = sum / (float)sourceChannels;
     }
 
+    const double fileRate = reader->sampleRate;
+    estimateKey(audio, fileRate);
+
+    const int analysisMode = (int)std::round(parameters.getRawParameterValue("analysisMode")->load());
+    if (analysisMode == 1)
+    {
+        clearNotes();
+        return analysePolyphonicFile(audio, fileRate);
+    }
+
     clearNotes();
     PitchTrackerState tracker;
-    const double fileRate = reader->sampleRate;
-    const int hop = 512;
-    const float accuracy = parameters.getRawParameterValue("accuracy")->load();
-    const float glide = parameters.getRawParameterValue("glide")->load();
-    const float vibrato = parameters.getRawParameterValue("vibrato")->load();
-    const float stability = parameters.getRawParameterValue("stability")->load();
+    const int hop = 256; // denser offline frames preserve short vocal articulations
+    const float accuracy = juce::jmin(0.90f, parameters.getRawParameterValue("accuracy")->load());
+    const float glide = parameters.getRawParameterValue("glide")->load() * 0.50f;
+    const float vibrato = parameters.getRawParameterValue("vibrato")->load() * 0.65f;
+    const float stability = parameters.getRawParameterValue("stability")->load() * 0.45f;
     const int chordMode = (int)std::round(parameters.getRawParameterValue("chordMode")->load());
     int detectedCount = 0;
 
