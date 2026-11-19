@@ -1140,7 +1140,8 @@ juce::String NocturneAudioProcessor::notesAsText() const
     const auto copy = getNotesCopy();
     for (const auto& note : copy)
         output << juce::MidiMessage::getMidiNoteName(note.midi, true, true, 3)
-               << "  " << juce::String(note.start, 3) << "s\n";
+               << "  " << juce::String(note.start, 3) << "s"
+               << "  VEL " << juce::String(note.velocity) << "\n";
     return output;
 }
 
