@@ -36,12 +36,14 @@ public:
         double start = 0.0;
         double length = 0.1;
         float confidence = 0.0f;
+        int velocity = 100;
     };
 
     juce::Array<NoteEvent> getNotesCopy() const;
     void clearNotes();
     int analyseFile(const juce::File&);
     void exportMidi(const juce::File&);
+    juce::File createTemporaryMidiFile();
     void moveNote(int index, int midi, double start);
     void setRecording(bool shouldRecord);
     std::array<float, 256> getLiveWaveformSnapshot() const;
@@ -102,10 +104,13 @@ private:
                                                    float vibrato,
                                                    float stability);
     float detectPitchYin(const float*, int, float& confidence, double analysisRate) const;
-    void acceptPitch(float hz, float confidence, double time, int midiSampleOffset, juce::MidiBuffer& midi);
+    void acceptPitch(float hz, float confidence, float frameRms, double time,
+                     int midiSampleOffset, juce::MidiBuffer& midi);
     void finishLiveNote(double time, int midiSampleOffset, juce::MidiBuffer& midi);
     void estimateKey(const juce::AudioBuffer<float>& audio, double analysisRate);
     int analysePolyphonicFile(const juce::AudioBuffer<float>& audio, double analysisRate);
+    static float getFrameRms(const float* samples, int numSamples);
+    static int velocityFromRms(float rms, float gateDb);
 
     juce::CriticalSection notesLock;
     juce::Array<NoteEvent> notes;
