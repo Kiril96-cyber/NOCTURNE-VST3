@@ -1,6 +1,13 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 
+#if JUCE_WINDOWS
+ #ifndef NOMINMAX
+  #define NOMINMAX
+ #endif
+ #include <windows.h>
+#endif
+
 NocturneAudioProcessor::NocturneAudioProcessor()
     : AudioProcessor(BusesProperties()
           .withInput("Input", juce::AudioChannelSet::stereo(), true)
@@ -1132,6 +1139,82 @@ void NocturneAudioProcessor::exportMidi(const juce::File& file)
     juce::FileOutputStream output(file);
     if (output.openedOk())
         midiFile.writeTo(output);
+}
+
+bool NocturneAudioProcessor::copyMidiToClipboard()
+{
+    juce::MidiFile midiFile;
+    midiFile.setTicksPerQuarterNote(960);
+    juce::MidiMessageSequence sequence;
+    const auto copy = getNotesCopy();
+    const double tempo = juce::jmax(20.0f, bpm.load());
+    const int division = quantizeDivision.load();
+    const double gridSeconds = division > 0
+        ? (60.0 / tempo) * (4.0 / (double)division) : 0.0;
+
+    for (const auto& note : copy)
+    {
+        const double quantizedStart = gridSeconds > 0.0
+            ? std::round(note.start / gridSeconds) * gridSeconds : note.start;
+        const double quantizedEnd = gridSeconds > 0.0
+            ? std::round((note.start + note.length) / gridSeconds) * gridSeconds
+            : (note.start + note.length);
+        const double startTicks = quantizedStart * 960.0 * tempo / 60.0;
+        const double endTicks = juce::jmax(quantizedStart + 0.03, quantizedEnd)
+                              * 960.0 * tempo / 60.0;
+
+        sequence.addEvent(juce::MidiMessage::noteOn(
+            1, note.midi, (juce::uint8)juce::jlimit(1, 127, note.velocity)), startTicks);
+        sequence.addEvent(juce::MidiMessage::noteOff(1, note.midi), endTicks);
+    }
+
+    sequence.updateMatchedPairs();
+    midiFile.addTrack(sequence);
+
+    juce::MemoryOutputStream midiBytes;
+    if (!midiFile.writeTo(midiBytes) || midiBytes.getDataSize() == 0)
+        return false;
+
+   #if JUCE_WINDOWS
+    // FL Studio's "Paste from MIDI Clipboard" accepts the registered
+    // "Standard MIDI File" clipboard format (not plain text).
+    const UINT midiClipboardFormat = ::RegisterClipboardFormatW(L"Standard MIDI File");
+    if (midiClipboardFormat == 0 || !::OpenClipboard(nullptr))
+        return false;
+
+    ::EmptyClipboard();
+    const SIZE_T byteCount = (SIZE_T)midiBytes.getDataSize();
+    HGLOBAL memory = ::GlobalAlloc(GMEM_MOVEABLE, byteCount);
+    if (memory == nullptr)
+    {
+        ::CloseClipboard();
+        return false;
+    }
+
+    void* destination = ::GlobalLock(memory);
+    if (destination == nullptr)
+    {
+        ::GlobalFree(memory);
+        ::CloseClipboard();
+        return false;
+    }
+
+    std::memcpy(destination, midiBytes.getData(), (size_t)byteCount);
+    ::GlobalUnlock(memory);
+
+    if (::SetClipboardData(midiClipboardFormat, memory) == nullptr)
+    {
+        ::GlobalFree(memory);
+        ::CloseClipboard();
+        return false;
+    }
+
+    // Windows owns the HGLOBAL after SetClipboardData succeeds.
+    ::CloseClipboard();
+    return true;
+   #else
+    return false;
+   #endif
 }
 
 juce::String NocturneAudioProcessor::notesAsText() const
