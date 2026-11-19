@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include <cstring>
 
 #if JUCE_WINDOWS
  #ifndef NOMINMAX
@@ -1115,6 +1116,9 @@ void NocturneAudioProcessor::exportMidi(const juce::File& file)
     midiFile.setTicksPerQuarterNote(960);
     juce::MidiMessageSequence sequence;
     const auto copy = getNotesCopy();
+    if (copy.isEmpty())
+        return false;
+
     const double tempo = juce::jmax(20.0f, bpm.load());
     const int division = quantizeDivision.load();
     const double gridSeconds = division > 0 ? (60.0 / tempo) * (4.0 / (double)division) : 0.0;
