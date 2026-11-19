@@ -29,6 +29,36 @@ NocturneAudioProcessorEditor::NocturneAudioProcessorEditor(NocturneAudioProcesso
 {
     setSize(1040, 740);
 
+    addAndMakeVisible(presetLabel);
+    presetLabel.setText("PRESET", juce::dontSendNotification);
+    presetLabel.setColour(juce::Label::textColourId, muted);
+    presetSelector.addItem("VOCAL  /  NATURAL", 1);
+    presetSelector.addItem("VOCAL  /  SOFT", 2);
+    presetSelector.addItem("VOCAL  /  BELTING", 3);
+    presetSelector.addItem("VOCAL  /  RAP", 4);
+    presetSelector.addItem("VOCAL  /  LOW", 5);
+    presetSelector.addItem("GUITAR  /  CLEAN", 6);
+    presetSelector.addItem("GUITAR  /  DISTORTED", 7);
+    presetSelector.addItem("PIANO  /  POLYPHONIC", 8);
+    presetSelector.addItem("E-PIANO  /  POLYPHONIC", 9);
+    presetSelector.addItem("STRINGS  /  PAD", 10);
+    presetSelector.setSelectedId(1, juce::dontSendNotification);
+    presetSelector.setColour(juce::ComboBox::backgroundColourId, panel);
+    presetSelector.setColour(juce::ComboBox::textColourId, text);
+    presetSelector.onChange = [this]
+    {
+        applyPreset(presetSelector.getSelectedId() - 1);
+    };
+    addAndMakeVisible(presetSelector);
+
+    addAndMakeVisible(pianoLockButton);
+    pianoLockButton.onChange = [this](bool locked)
+    {
+        statusLabel.setText(locked ? "PIANO ROLL LOCKED" : "PIANO ROLL EDITING ENABLED",
+                            juce::dontSendNotification);
+        repaint();
+    };
+
     auto setupButton = [&](juce::TextButton& button)
     {
         addAndMakeVisible(button);
@@ -273,8 +303,52 @@ void NocturneAudioProcessorEditor::saveMidi()
 
 void NocturneAudioProcessorEditor::copyNotes()
 {
-    juce::SystemClipboard::copyTextToClipboard(processor.notesAsText());
-    statusLabel.setText("NOTE NAMES COPIED", juce::dontSendNotification);
+    if (processor.copyMidiToClipboard())
+        statusLabel.setText("MIDI COPIED  |  FL PIANO ROLL: SHIFT+CTRL+V",
+                            juce::dontSendNotification);
+    else
+        statusLabel.setText("MIDI CLIPBOARD UNAVAILABLE OR NO NOTES",
+                            juce::dontSendNotification);
+}
+
+void NocturneAudioProcessorEditor::applyPreset(int presetIndex)
+{
+    struct Preset
+    {
+        float speed;
+        float accuracy;
+        float glide;
+        float vibrato;
+        float stability;
+        float gateDb;
+        int analysisMode; // 0 = vocal/monophonic, 1 = polyphonic
+    };
+
+    static constexpr Preset presets[] = {
+        { 55.0f, 0.75f, 35.0f, 55.0f, 35.0f, -42.0f, 0 }, // Vocal natural
+        { 52.0f, 0.66f, 52.0f, 72.0f, 24.0f, -52.0f, 0 }, // Soft/breathy
+        { 55.0f, 0.84f, 22.0f, 42.0f, 43.0f, -35.0f, 0 }, // Belting
+        { 92.0f, 0.68f, 8.0f, 18.0f, 12.0f, -39.0f, 0 },  // Rap/fast syllables
+        { 48.0f, 0.78f, 36.0f, 48.0f, 38.0f, -43.0f, 0 }, // Low voice
+        { 58.0f, 0.72f, 22.0f, 32.0f, 46.0f, -42.0f, 1 }, // Clean guitar
+        { 62.0f, 0.70f, 18.0f, 28.0f, 55.0f, -35.0f, 1 }, // Distorted guitar
+        { 48.0f, 0.62f, 20.0f, 12.0f, 54.0f, -43.0f, 1 }, // Piano
+        { 52.0f, 0.64f, 25.0f, 18.0f, 50.0f, -46.0f, 1 }, // Electric piano
+        { 42.0f, 0.68f, 48.0f, 58.0f, 62.0f, -50.0f, 1 }  // Strings/pad
+    };
+
+    if (!juce::isPositiveAndBelow(presetIndex, (int)std::size(presets)))
+        return;
+
+    const auto& preset = presets[presetIndex];
+    speed.setValue(preset.speed, juce::sendNotificationSync);
+    accuracy.setValue(preset.accuracy, juce::sendNotificationSync);
+    glide.setValue(preset.glide, juce::sendNotificationSync);
+    vibrato.setValue(preset.vibrato, juce::sendNotificationSync);
+    stability.setValue(preset.stability, juce::sendNotificationSync);
+    inputGate.setValue(preset.gateDb, juce::sendNotificationSync);
+    analysisMode.setSelectedId(preset.analysisMode + 1, juce::sendNotificationSync);
+    statusLabel.setText("PRESET APPLIED", juce::dontSendNotification);
 }
 
 void NocturneAudioProcessorEditor::timerCallback()
@@ -438,6 +512,8 @@ void NocturneAudioProcessorEditor::paint(juce::Graphics& g)
     g.setFont(10.5f);
     g.drawText("PIANO ROLL  /  LIVE NOTES UPDATE DURING RECORDING",
                42, 286, 560, 15, juce::Justification::left);
+    g.drawText(pianoLockButton.isLocked() ? "LOCKED" : "EDIT",
+               646, 286, 54, 15, juce::Justification::right);
 
     const int rows = 24;
     const float rowHeight = roll.getHeight() / (float)rows;
@@ -523,6 +599,10 @@ void NocturneAudioProcessorEditor::paint(juce::Graphics& g)
 
 void NocturneAudioProcessorEditor::resized()
 {
+    presetLabel.setBounds(780, 8, 220, 16);
+    presetSelector.setBounds(780, 25, 220, 30);
+    pianoLockButton.setBounds(712, 281, 24, 22);
+
     importButton.setBounds(28, 690, 140, 36);
     recordButton.setBounds(177, 690, 120, 36);
     exportButton.setBounds(306, 690, 130, 36);
@@ -557,7 +637,7 @@ void NocturneAudioProcessorEditor::resized()
 void NocturneAudioProcessorEditor::mouseDown(const juce::MouseEvent& event)
 {
     const auto roll = pianoBounds();
-    if (!roll.contains(event.position))
+    if (pianoLockButton.isLocked() || !roll.contains(event.position))
         return;
 
     const auto noteEvents = processor.getNotesCopy();
@@ -595,7 +675,7 @@ void NocturneAudioProcessorEditor::mouseDown(const juce::MouseEvent& event)
 
 void NocturneAudioProcessorEditor::mouseDrag(const juce::MouseEvent& event)
 {
-    if (draggedNote < 0)
+    if (pianoLockButton.isLocked() || draggedNote < 0)
         return;
 
     const auto roll = pianoBounds();
