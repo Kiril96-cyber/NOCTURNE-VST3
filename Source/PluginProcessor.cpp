@@ -133,7 +133,7 @@ float NocturneAudioProcessor::detectPitchYin(const float* x, int n, float& confi
     return (hz >= 45.0f && hz <= 1200.0f) ? hz : 0.0f;
 }
 
-NocturneAudioProcessor::NocturneAudioProcessor::ChordNotes NocturneAudioProcessor::makeChordNotes(int rootMidi, int mode)
+NocturneAudioProcessor::ChordNotes NocturneAudioProcessor::makeChordNotes(int rootMidi, int mode)
 {
     static const int intervals[7][4] = {
         { 0, -1, -1, -1 }, // Off
