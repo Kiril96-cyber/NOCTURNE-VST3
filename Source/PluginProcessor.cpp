@@ -17,6 +17,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout NocturneAudioProcessor::crea
     p.push_back(std::make_unique<juce::AudioParameterFloat>("glide", "Pitch glide", 0.0f, 100.0f, 35.0f));
     p.push_back(std::make_unique<juce::AudioParameterFloat>("vibrato", "Vibrato tolerance", 0.0f, 100.0f, 55.0f));
     p.push_back(std::make_unique<juce::AudioParameterFloat>("stability", "Transition stability", 0.0f, 100.0f, 65.0f));
+    p.push_back(std::make_unique<juce::AudioParameterChoice>(
+        "chordMode", "Chord mode",
+        juce::StringArray { "OFF", "MAJOR", "MINOR", "DIMINISHED", "AUGMENTED", "SUS2", "SUS4" }, 0));
     return { p.begin(), p.end() };
 }
 
@@ -130,7 +133,30 @@ float NocturneAudioProcessor::detectPitchYin(const float* x, int n, float& confi
     return (hz >= 45.0f && hz <= 1200.0f) ? hz : 0.0f;
 }
 
-NocturneAudioProcessor::PitchTrackerEvents NocturneAudioProcessor::updatePitchTracker(
+NocturneAudioProcessor::NocturneAudioProcessor::ChordNotes NocturneAudioProcessor::makeChordNotes(int rootMidi, int mode)
+{
+    static const int intervals[7][4] = {
+        { 0, -1, -1, -1 }, // Off
+        { 0, 4, 7, -1 },   // Major
+        { 0, 3, 7, -1 },   // Minor
+        { 0, 3, 6, -1 },   // Diminished
+        { 0, 4, 8, -1 },   // Augmented
+        { 0, 2, 7, -1 },   // Suspended second
+        { 0, 5, 7, -1 }    // Suspended fourth
+    };
+
+    ChordNotes result;
+    const int selected = juce::jlimit(0, 6, mode);
+    for (int i = 0; i < 4 && intervals[selected][i] >= 0; ++i)
+    {
+        const int note = rootMidi + intervals[selected][i];
+        if (note <= 127)
+            result.midi[(size_t)result.count++] = note;
+    }
+    return result;
+}
+
+PitchTrackerEvents NocturneAudioProcessor::updatePitchTracker(
     PitchTrackerState& state, float hz, float confidence, double time,
     float accuracy, float glide, float vibrato, float stability)
 {
@@ -228,13 +254,22 @@ void NocturneAudioProcessor::finishLiveNote(double time, int midiSampleOffset, j
 {
     if (liveTracker.activeMidi >= 0)
     {
-        midi.addEvent(juce::MidiMessage::noteOff(1, liveTracker.activeMidi), midiSampleOffset);
+        const int count = liveTracker.activeChordCount > 0 ? liveTracker.activeChordCount : 1;
         juce::ScopedLock lock(notesLock);
-        if (!notes.isEmpty())
+        for (int i = 0; i < count; ++i)
         {
-            auto& last = notes.getReference(notes.size() - 1);
-            if (last.midi == liveTracker.activeMidi)
-                last.length = juce::jmax(0.04, time - last.start);
+            const int noteMidi = liveTracker.activeChordCount > 0
+                ? liveTracker.activeChordMidi[(size_t)i] : liveTracker.activeMidi;
+            midi.addEvent(juce::MidiMessage::noteOff(1, noteMidi), midiSampleOffset);
+            for (int n = notes.size() - 1; n >= 0; --n)
+            {
+                auto& note = notes.getReference(n);
+                if (note.midi == noteMidi && note.start == liveTracker.noteStart)
+                {
+                    note.length = juce::jmax(0.04, time - note.start);
+                    break;
+                }
+            }
         }
     }
     liveTracker = {};
@@ -247,43 +282,69 @@ void NocturneAudioProcessor::acceptPitch(float hz, float confidence, double time
     const float glide = parameters.getRawParameterValue("glide")->load();
     const float vibrato = parameters.getRawParameterValue("vibrato")->load();
     const float stability = parameters.getRawParameterValue("stability")->load();
+    const int chordMode = (int)std::round(parameters.getRawParameterValue("chordMode")->load());
+
+    const auto previousChord = liveTracker.activeChordMidi;
+    const int previousChordCount = liveTracker.activeChordCount;
+    const double previousNoteStart = liveTracker.noteStart;
+    const int previousRoot = liveTracker.activeMidi;
 
     const auto events = updatePitchTracker(liveTracker, hz, confidence, time,
                                             accuracy, glide, vibrato, stability);
 
     if (events.closed)
     {
-        midi.addEvent(juce::MidiMessage::noteOff(1, events.closedMidi), midiSampleOffset);
+        const int count = previousChordCount > 0 ? previousChordCount : 1;
         juce::ScopedLock lock(notesLock);
-        for (int i = notes.size() - 1; i >= 0; --i)
+        for (int i = 0; i < count; ++i)
         {
-            auto& n = notes.getReference(i);
-            if (n.midi == events.closedMidi && n.start <= events.closeTime &&
-                n.start + n.length >= events.closeTime - 0.01)
+            const int noteMidi = previousChordCount > 0
+                ? previousChord[(size_t)i] : previousRoot;
+            midi.addEvent(juce::MidiMessage::noteOff(1, noteMidi), midiSampleOffset);
+            for (int n = notes.size() - 1; n >= 0; --n)
             {
-                n.length = juce::jmax(0.04, events.closeTime - n.start);
-                break;
+                auto& note = notes.getReference(n);
+                if (note.midi == noteMidi && note.start == previousNoteStart)
+                {
+                    note.length = juce::jmax(0.04, events.closeTime - note.start);
+                    break;
+                }
             }
         }
     }
 
     if (events.opened)
     {
-        midi.addEvent(juce::MidiMessage::noteOn(1, events.openedMidi, (juce::uint8)100), midiSampleOffset);
+        const auto chord = makeChordNotes(events.openedMidi, chordMode);
+        liveTracker.activeChordMidi = chord.midi;
+        liveTracker.activeChordCount = chord.count;
         juce::ScopedLock lock(notesLock);
-        notes.add({ events.openedMidi, events.openTime, 0.06, events.openConfidence });
+        for (int i = 0; i < chord.count; ++i)
+        {
+            const int noteMidi = chord.midi[(size_t)i];
+            midi.addEvent(juce::MidiMessage::noteOn(1, noteMidi, (juce::uint8)100), midiSampleOffset);
+            notes.add({ noteMidi, events.openTime, 0.06, events.openConfidence });
+        }
+    }
+    else if (events.closed)
+    {
+        liveTracker.activeChordCount = 0;
     }
 
     if (liveTracker.activeMidi >= 0)
     {
         juce::ScopedLock lock(notesLock);
-        for (int i = notes.size() - 1; i >= 0; --i)
+        for (int chordIndex = 0; chordIndex < liveTracker.activeChordCount; ++chordIndex)
         {
-            auto& n = notes.getReference(i);
-            if (n.midi == liveTracker.activeMidi && n.start == liveTracker.noteStart)
+            const int noteMidi = liveTracker.activeChordMidi[(size_t)chordIndex];
+            for (int n = notes.size() - 1; n >= 0; --n)
             {
-                n.length = juce::jmax(0.04, time - n.start);
-                break;
+                auto& note = notes.getReference(n);
+                if (note.midi == noteMidi && note.start == liveTracker.noteStart)
+                {
+                    note.length = juce::jmax(0.04, time - note.start);
+                    break;
+                }
             }
         }
     }
@@ -320,7 +381,15 @@ void NocturneAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     if (trackerResetRequested.exchange(false))
     {
         if (liveTracker.activeMidi >= 0)
-            midi.addEvent(juce::MidiMessage::noteOff(1, liveTracker.activeMidi), 0);
+        {
+            const int count = liveTracker.activeChordCount > 0 ? liveTracker.activeChordCount : 1;
+            for (int i = 0; i < count; ++i)
+            {
+                const int noteMidi = liveTracker.activeChordCount > 0
+                    ? liveTracker.activeChordMidi[(size_t)i] : liveTracker.activeMidi;
+                midi.addEvent(juce::MidiMessage::noteOff(1, noteMidi), 0);
+            }
+        }
         liveTracker = {};
     }
 
@@ -397,6 +466,7 @@ int NocturneAudioProcessor::analyseFile(const juce::File& file)
     const float glide = parameters.getRawParameterValue("glide")->load();
     const float vibrato = parameters.getRawParameterValue("vibrato")->load();
     const float stability = parameters.getRawParameterValue("stability")->load();
+    const int chordMode = (int)std::round(parameters.getRawParameterValue("chordMode")->load());
     int detectedCount = 0;
 
     for (int position = 0; position + analysisWindowSize <= totalSamples; position += hop)
@@ -405,46 +475,83 @@ int NocturneAudioProcessor::analyseFile(const juce::File& file)
         const float hz = detectPitchYin(audio.getReadPointer(0) + position,
                                         analysisWindowSize, confidence, fileRate);
         const double time = (double)position / fileRate;
+
+        const auto previousChord = tracker.activeChordMidi;
+        const int previousChordCount = tracker.activeChordCount;
+        const double previousNoteStart = tracker.noteStart;
+        const int previousRoot = tracker.activeMidi;
+
         const auto events = updatePitchTracker(tracker, hz, confidence, time,
                                                 accuracy, glide, vibrato, stability);
 
         juce::ScopedLock lock(notesLock);
         if (events.closed)
         {
-            for (int i = notes.size() - 1; i >= 0; --i)
+            const int count = previousChordCount > 0 ? previousChordCount : 1;
+            for (int i = 0; i < count; ++i)
             {
-                auto& n = notes.getReference(i);
-                if (n.midi == events.closedMidi && n.start <= events.closeTime &&
-                    n.start + n.length >= events.closeTime - 0.01)
+                const int noteMidi = previousChordCount > 0
+                    ? previousChord[(size_t)i] : previousRoot;
+                for (int n = notes.size() - 1; n >= 0; --n)
                 {
-                    n.length = juce::jmax(0.04, events.closeTime - n.start);
-                    break;
+                    auto& note = notes.getReference(n);
+                    if (note.midi == noteMidi && note.start == previousNoteStart)
+                    {
+                        note.length = juce::jmax(0.04, events.closeTime - note.start);
+                        break;
+                    }
                 }
             }
         }
+
         if (events.opened)
         {
-            notes.add({ events.openedMidi, events.openTime, 0.06, events.openConfidence });
-            ++detectedCount;
+            const auto chord = makeChordNotes(events.openedMidi, chordMode);
+            tracker.activeChordMidi = chord.midi;
+            tracker.activeChordCount = chord.count;
+            for (int i = 0; i < chord.count; ++i)
+            {
+                notes.add({ chord.midi[(size_t)i], events.openTime, 0.06, events.openConfidence });
+                ++detectedCount;
+            }
         }
-        if (tracker.activeMidi >= 0 && !notes.isEmpty())
+        else if (events.closed)
         {
-            auto& last = notes.getReference(notes.size() - 1);
-            if (last.midi == tracker.activeMidi && last.start == tracker.noteStart)
-                last.length = juce::jmax(0.04, time - last.start);
+            tracker.activeChordCount = 0;
+        }
+
+        if (tracker.activeMidi >= 0)
+        {
+            for (int chordIndex = 0; chordIndex < tracker.activeChordCount; ++chordIndex)
+            {
+                const int noteMidi = tracker.activeChordMidi[(size_t)chordIndex];
+                for (int n = notes.size() - 1; n >= 0; --n)
+                {
+                    auto& note = notes.getReference(n);
+                    if (note.midi == noteMidi && note.start == tracker.noteStart)
+                    {
+                        note.length = juce::jmax(0.04, time - note.start);
+                        break;
+                    }
+                }
+            }
         }
     }
 
     if (tracker.activeMidi >= 0)
     {
         juce::ScopedLock lock(notesLock);
-        for (int i = notes.size() - 1; i >= 0; --i)
+        for (int chordIndex = 0; chordIndex < tracker.activeChordCount; ++chordIndex)
         {
-            auto& n = notes.getReference(i);
-            if (n.midi == tracker.activeMidi && n.start == tracker.noteStart)
+            const int noteMidi = tracker.activeChordMidi[(size_t)chordIndex];
+            for (int n = notes.size() - 1; n >= 0; --n)
             {
-                n.length = juce::jmax(0.05, (double)totalSamples / fileRate - n.start);
-                break;
+                auto& note = notes.getReference(n);
+                if (note.midi == noteMidi && note.start == tracker.noteStart)
+                {
+                    note.length = juce::jmax(0.05, (double)totalSamples / fileRate - note.start);
+                    break;
+                }
             }
         }
     }
