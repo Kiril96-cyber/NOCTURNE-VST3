@@ -37,7 +37,7 @@ public:
         g.drawLine(14.0f, cy + 5.0f, 19.0f, cy + 5.0f, 0.9f);
 
         const float trailStart = 31.0f;
-        const float trailEnd = 54.0f;
+        const float trailEnd = 54.0f + 3.0f * std::sin(animationPhase * 0.9f);
         g.setColour(accent.withAlpha(0.35f));
         g.drawLine(trailStart, cy, trailEnd, cy, 1.2f);
         for (int i = 0; i < 4; ++i)
@@ -58,7 +58,7 @@ public:
         g.drawText("DRAG MIDI", 61, 3, getWidth() - 68, 17, juce::Justification::centredLeft);
         g.setColour(juce::Colour(0xffb9accd));
         g.setFont(juce::Font(9.5f));
-        g.drawText("HOLD  +  MOVE", 61, 18, getWidth() - 68, 13, juce::Justification::centredLeft);
+        g.drawText("HOLD  +  DRAG TO ROLL", 61, 18, getWidth() - 68, 13, juce::Justification::centredLeft);
     }
 
     void timerCallback() override
