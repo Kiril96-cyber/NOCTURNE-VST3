@@ -202,8 +202,8 @@ NocturneAudioProcessor::PitchTrackerEvents NocturneAudioProcessor::updatePitchTr
         state.smoothedMidi = state.smoothedMidi * smoothing + rawMidi * (1.0f - smoothing);
 
     const int candidate = juce::jlimit(0, 127, (int)std::round(state.smoothedMidi));
-    const int confirmations = juce::jlimit(2, 6, 2 + (int)std::round(stability * 0.04f));
-    const double minimumSwitchHold = 0.045 + (double)stability * 0.0009;
+    const int confirmations = juce::jlimit(2, 8, 2 + (int)std::round(stability * 0.055f));
+    const double minimumSwitchHold = 0.06 + (double)stability * 0.0016;
 
     if (state.activeMidi >= 0 && std::abs(state.smoothedMidi - (float)state.activeMidi) < 0.72f)
     {
