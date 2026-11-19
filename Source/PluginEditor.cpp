@@ -1,5 +1,173 @@
 #include "PluginEditor.h"
 
+#if JUCE_WINDOWS
+ #ifndef NOMINMAX
+  #define NOMINMAX
+ #endif
+ #include <windows.h>
+ #include <ole2.h>
+ #include <shlobj.h>
+ #include <cstring>
+ #include <cwchar>
+ #include <atomic>
+
+namespace
+{
+class NocturneFileDropSource final : public IDropSource
+{
+public:
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** object) override
+    {
+        if (object == nullptr)
+            return E_POINTER;
+        *object = nullptr;
+        if (IsEqualIID(iid, IID_IUnknown) || IsEqualIID(iid, IID_IDropSource))
+        {
+            *object = static_cast<IDropSource*>(this);
+            AddRef();
+            return S_OK;
+        }
+        return E_NOINTERFACE;
+    }
+
+    ULONG STDMETHODCALLTYPE AddRef() override { return ++references; }
+
+    ULONG STDMETHODCALLTYPE Release() override
+    {
+        const ULONG remaining = --references;
+        if (remaining == 0)
+            delete this;
+        return remaining;
+    }
+
+    HRESULT STDMETHODCALLTYPE QueryContinueDrag(BOOL escapePressed, DWORD keyState) override
+    {
+        if (escapePressed != FALSE)
+            return DRAGDROP_S_CANCEL;
+        if ((keyState & MK_LBUTTON) == 0)
+            return DRAGDROP_S_DROP;
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE GiveFeedback(DWORD) override
+    {
+        return DRAGDROP_S_USEDEFAULTCURSORS;
+    }
+
+private:
+    std::atomic<ULONG> references { 1 };
+};
+
+bool performNativeMidiFileDrag(const juce::File& file)
+{
+    if (!file.existsAsFile())
+        return false;
+
+    const HRESULT oleInit = ::OleInitialize(nullptr);
+    if (oleInit == RPC_E_CHANGED_MODE)
+    {
+        juce::StringArray files;
+        files.add(file.getFullPathName());
+        return juce::DragAndDropContainer::performExternalDragDropOfFiles(files, false);
+    }
+    if (FAILED(oleInit))
+        return false;
+
+    const juce::String fullPath = file.getFullPathName();
+    PIDLIST_ABSOLUTE absoluteItem = nullptr;
+    HRESULT hr = ::SHParseDisplayName(fullPath.toWideCharPointer(),
+                                      nullptr, &absoluteItem, 0, nullptr);
+    if (FAILED(hr) || absoluteItem == nullptr)
+    {
+        ::OleUninitialize();
+        return false;
+    }
+
+    PIDLIST_ABSOLUTE parentFolder = ::ILCloneFull(absoluteItem);
+    PCUITEMID_CHILD childItem = ::ILFindLastID(absoluteItem);
+    if (parentFolder == nullptr || childItem == nullptr || !::ILRemoveLastID(parentFolder))
+    {
+        if (parentFolder != nullptr)
+            ::ILFree(parentFolder);
+        ::ILFree(absoluteItem);
+        ::OleUninitialize();
+        return false;
+    }
+
+    PCUITEMID_CHILD childItems[1] = { childItem };
+    IDataObject* dataObject = nullptr;
+    hr = ::SHCreateDataObject(parentFolder, 1, childItems, nullptr,
+                              IID_IDataObject, reinterpret_cast<void**>(&dataObject));
+
+    ::ILFree(parentFolder);
+    ::ILFree(absoluteItem);
+
+    if (FAILED(hr) || dataObject == nullptr)
+    {
+        ::OleUninitialize();
+        return false;
+    }
+
+    // Explicitly expose CF_HDROP so FL Studio receives the same shell file
+    // descriptor type used when a .mid is dragged from Windows Explorer.
+    const auto* widePath = fullPath.toWideCharPointer();
+    const size_t pathChars = std::wcslen(widePath);
+    const SIZE_T allocationSize = sizeof(DROPFILES) + (pathChars + 2) * sizeof(wchar_t);
+    HGLOBAL memory = ::GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, allocationSize);
+
+    bool hasHDrop = false;
+    if (memory != nullptr)
+    {
+        auto* dropFiles = static_cast<DROPFILES*>(::GlobalLock(memory));
+        if (dropFiles != nullptr)
+        {
+            dropFiles->pFiles = sizeof(DROPFILES);
+            dropFiles->fWide = TRUE;
+            auto* pathBuffer = reinterpret_cast<wchar_t*>(
+                reinterpret_cast<BYTE*>(dropFiles) + dropFiles->pFiles);
+            std::memcpy(pathBuffer, widePath, (pathChars + 1) * sizeof(wchar_t));
+            pathBuffer[pathChars + 1] = L'\0';
+            ::GlobalUnlock(memory);
+
+            FORMATETC format {};
+            format.cfFormat = CF_HDROP;
+            format.dwAspect = DVASPECT_CONTENT;
+            format.lindex = -1;
+            format.tymed = TYMED_HGLOBAL;
+
+            STGMEDIUM medium {};
+            medium.tymed = TYMED_HGLOBAL;
+            medium.hGlobal = memory;
+
+            if (SUCCEEDED(dataObject->SetData(&format, &medium, TRUE)))
+                hasHDrop = true;
+        }
+
+        if (!hasHDrop)
+            ::GlobalFree(memory);
+    }
+
+    if (!hasHDrop)
+    {
+        dataObject->Release();
+        ::OleUninitialize();
+        return false;
+    }
+
+    auto* dropSource = new NocturneFileDropSource();
+    DWORD effect = DROPEFFECT_NONE;
+    const HRESULT dragResult = ::DoDragDrop(dataObject, dropSource,
+                                            DROPEFFECT_COPY, &effect);
+
+    dropSource->Release();
+    dataObject->Release();
+    ::OleUninitialize();
+
+    return dragResult == DRAGDROP_S_DROP && (effect & DROPEFFECT_COPY) != 0;
+}
+}
+#endif
+
 static const juce::Colour bg(0xff101016);
 static const juce::Colour panel(0xff191923);
 static const juce::Colour line(0xff343044);
@@ -75,6 +243,12 @@ NocturneAudioProcessorEditor::NocturneAudioProcessorEditor(NocturneAudioProcesso
 
     addAndMakeVisible(dragMidiButton);
     dragMidiButton.createMidiFile = [this] { return processor.createTemporaryMidiFile(); };
+   #if JUCE_WINDOWS
+    dragMidiButton.performNativeMidiDrag = [](const juce::File& file)
+    {
+        return performNativeMidiFileDrag(file);
+    };
+   #endif
     dragMidiButton.dragResult = [this](bool started)
     {
         statusLabel.setText(started
