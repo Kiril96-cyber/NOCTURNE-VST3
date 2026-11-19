@@ -9,6 +9,21 @@ static const juce::Colour muted(0xff938ba3);
 static const juce::Colour waveformColour(0xff6c5b88);
 static const juce::Colour liveColour(0xffb39adf);
 
+static juce::String detectedKeyText(const NocturneAudioProcessor& processor)
+{
+    static const juce::StringArray pitchNames {
+        "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"
+    };
+    const int root = processor.detectedKeyRoot.load();
+    if (!juce::isPositiveAndBelow(root, 12))
+        return "KEY  --";
+
+    const juce::String mode = processor.detectedKeyMode.load() == 1 ? "MINOR" : "MAJOR";
+    const int confidence = juce::jlimit(0, 100,
+        (int)std::round(processor.detectedKeyConfidence.load() * 100.0f));
+    return "KEY  " + pitchNames[root] + " " + mode + "  " + juce::String(confidence) + "%";
+}
+
 NocturneAudioProcessorEditor::NocturneAudioProcessorEditor(NocturneAudioProcessor& p)
     : AudioProcessorEditor(&p), processor(p)
 {
@@ -72,10 +87,10 @@ NocturneAudioProcessorEditor::NocturneAudioProcessorEditor(NocturneAudioProcesso
     };
 
     setupSlider(speed, speedLabel, "READ SPEED", 10, 100, 45);
-    setupSlider(accuracy, accuracyLabel, "NOTE ACCURACY", 0.50, 0.99, 0.78);
+    setupSlider(accuracy, accuracyLabel, "NOTE ACCURACY", 0.50, 0.93, 0.75);
     setupSlider(glide, glideLabel, "PITCH GLIDE", 0, 100, 35);
     setupSlider(vibrato, vibratoLabel, "VIBRATO TOLERANCE", 0, 100, 55);
-    setupSlider(stability, stabilityLabel, "TRANSITION STABILITY", 0, 100, 65);
+    setupSlider(stability, stabilityLabel, "TRANSITION STABILITY", 0, 100, 35);
     setupSlider(tempo, tempoLabel, "PROJECT BPM", 40, 240, 120);
 
     speed.onValueChange = [this]
@@ -136,6 +151,20 @@ NocturneAudioProcessorEditor::NocturneAudioProcessorEditor(NocturneAudioProcesso
             parameter->setValueNotifyingHost(parameter->convertTo0to1((float)(chordMode.getSelectedId() - 1)));
     };
 
+    addAndMakeVisible(analysisMode);
+    addAndMakeVisible(analysisModeLabel);
+    analysisModeLabel.setText("ANALYSIS MODE", juce::dontSendNotification);
+    analysisModeLabel.setColour(juce::Label::textColourId, muted);
+    analysisMode.addItem("VOCAL", 1);
+    analysisMode.addItem("POLYPHONIC", 2);
+    analysisMode.setSelectedId(1);
+    analysisMode.onChange = [this]
+    {
+        if (auto* parameter = processor.parameters.getParameter("analysisMode"))
+            parameter->setValueNotifyingHost(
+                parameter->convertTo0to1((float)(analysisMode.getSelectedId() - 1)));
+    };
+
     addAndMakeVisible(pitchLabel);
     pitchLabel.setColour(juce::Label::textColourId, violet);
     pitchLabel.setFont(juce::Font(18.0f));
@@ -192,8 +221,8 @@ void NocturneAudioProcessorEditor::chooseAudio()
                 loadWaveform(file);
                 const int count = processor.analyseFile(file);
                 statusLabel.setText(count > 0
-                    ? "ANALYSIS COMPLETE - " + juce::String(count) + " STABLE NOTES"
-                    : "NO STABLE NOTES - TRY A CLEANER VOCAL / LOWER NOTE ACCURACY",
+                    ? "ANALYSIS COMPLETE - " + juce::String(count) + " NOTES"
+                    : "NO NOTES DETECTED - CHECK SOURCE / ANALYSIS MODE",
                     juce::dontSendNotification);
             }
             audioFileChooser.reset();
@@ -464,8 +493,9 @@ void NocturneAudioProcessorEditor::paint(juce::Graphics& g)
     g.setColour(muted);
     g.setFont(10.0f);
     g.drawText("NOTES  " + juce::String(noteEvents.size()) +
+               "     " + detectedKeyText(processor) +
                "     BPM " + juce::String(processor.bpm.load(), 1),
-               42, 604, 260, 15, juce::Justification::left);
+               42, 604, 690, 15, juce::Justification::left);
 
     g.setColour(line);
     g.drawLine(28, 628, (float)getWidth() - 28, 628, 1.0f);
@@ -495,6 +525,8 @@ void NocturneAudioProcessorEditor::resized()
     quantize.setBounds(780, 466, 220, 28);
     chordModeLabel.setBounds(780, 504, 220, 18);
     chordMode.setBounds(780, 524, 220, 28);
+    analysisModeLabel.setBounds(780, 562, 220, 18);
+    analysisMode.setBounds(780, 582, 220, 28);
     pitchLabel.setBounds(390, 112, 340, 36);
     statusLabel.setBounds(675, 648, 340, 24);
 }
