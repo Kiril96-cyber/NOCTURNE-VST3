@@ -729,7 +729,6 @@ void NocturneAudioProcessorEditor::paint(juce::Graphics& g)
                42, 286, 560, 15, juce::Justification::left);
     g.drawText(pianoLockButton.isLocked() ? "LOCKED" : "EDIT",
                646, 286, 54, 15, juce::Justification::right);
-    g.drawText("Y", 754, 286, 18, 12, juce::Justification::centred);
 
     const int rows = 24;
     const float rowHeight = roll.getHeight() / (float)rows;
@@ -751,6 +750,8 @@ void NocturneAudioProcessorEditor::paint(juce::Graphics& g)
     double totalTime = 8.0;
     for (const auto& note : noteEvents)
         totalTime = juce::jmax(totalTime, note.start + note.length);
+    if (isRecording)
+        totalTime = juce::jmax(totalTime, recordPosition + 0.25);
 
     const double visibleDuration = 8.0;
     const double maxScrollStart = juce::jmax(0.0, totalTime - visibleDuration);
@@ -804,7 +805,6 @@ void NocturneAudioProcessorEditor::paint(juce::Graphics& g)
                "     " + detectedKeyText(processor) +
                "     BPM " + juce::String(processor.bpm.load(), 1),
                42, 604, 690, 15, juce::Justification::left);
-    g.drawText("X  /  TIME", 42, 628, 64, 16, juce::Justification::left);
 
     g.setColour(line);
     g.drawLine(28, 676, (float)getWidth() - 28, 676, 1.0f);
@@ -863,6 +863,8 @@ void NocturneAudioProcessorEditor::mouseDown(const juce::MouseEvent& event)
     double totalTime = 8.0;
     for (const auto& note : noteEvents)
         totalTime = juce::jmax(totalTime, note.start + note.length);
+    if (processor.recording.load())
+        totalTime = juce::jmax(totalTime, processor.recordingPositionSeconds.load() + 0.25);
 
     const double visibleDuration = 8.0;
     const double maxScrollStart = juce::jmax(0.0, totalTime - visibleDuration);
@@ -901,6 +903,8 @@ void NocturneAudioProcessorEditor::mouseDrag(const juce::MouseEvent& event)
     double totalTime = 8.0;
     for (const auto& note : noteEvents)
         totalTime = juce::jmax(totalTime, note.start + note.length);
+    if (processor.recording.load())
+        totalTime = juce::jmax(totalTime, processor.recordingPositionSeconds.load() + 0.25);
 
     const double visibleDuration = 8.0;
     const double maxScrollStart = juce::jmax(0.0, totalTime - visibleDuration);
