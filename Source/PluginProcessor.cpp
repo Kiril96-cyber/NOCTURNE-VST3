@@ -17,6 +17,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout NocturneAudioProcessor::crea
     p.push_back(std::make_unique<juce::AudioParameterFloat>("glide", "Pitch glide", 0.0f, 100.0f, 35.0f));
     p.push_back(std::make_unique<juce::AudioParameterFloat>("vibrato", "Vibrato tolerance", 0.0f, 100.0f, 55.0f));
     p.push_back(std::make_unique<juce::AudioParameterFloat>("stability", "Transition stability", 0.0f, 100.0f, 35.0f));
+    p.push_back(std::make_unique<juce::AudioParameterFloat>("inputGateDb", "Input gate (dB)", -60.0f, -6.0f, -42.0f));
     p.push_back(std::make_unique<juce::AudioParameterChoice>(
         "analysisMode", "Analysis mode", juce::StringArray { "VOCAL", "POLYPHONIC" }, 0));
     p.push_back(std::make_unique<juce::AudioParameterChoice>(
@@ -62,14 +63,30 @@ float NocturneAudioProcessor::detectPitchYin(const float* x, int n, float& confi
         return 0.0f;
 
     // Fixed-size scratch buffers avoid heap allocation in the audio callback.
+    // Remove DC and normalise each frame before calculating YIN differences.
+    // This keeps the detector numerically stable when the DAW input is very hot.
     std::array<float, analysisWindowSize + 1> difference {};
     std::array<float, analysisWindowSize + 1> cumulativeMean {};
-    double rms = 0.0;
+    std::array<float, analysisWindowSize> normalised {};
+    double mean = 0.0;
     for (int i = 0; i < n; ++i)
-        rms += (double)x[i] * (double)x[i];
-    rms = std::sqrt(rms / (double)n);
-    if (rms < 0.0012)
+        mean += (double)x[i];
+    mean /= (double)n;
+
+    double rmsSquared = 0.0;
+    for (int i = 0; i < n; ++i)
+    {
+        const float centred = x[i] - (float)mean;
+        normalised[(size_t)i] = centred;
+        rmsSquared += (double)centred * (double)centred;
+    }
+    const float rms = (float)std::sqrt(rmsSquared / (double)n);
+    if (rms < 0.0007f)
         return 0.0f;
+
+    const float normaliseGain = 0.20f / juce::jmax(1.0e-6f, rms);
+    for (int i = 0; i < n; ++i)
+        normalised[(size_t)i] = juce::jlimit(-2.5f, 2.5f, normalised[(size_t)i] * normaliseGain);
 
     const int compareCount = n - maxLag;
     for (int tau = 1; tau <= maxLag; ++tau)
@@ -77,7 +94,7 @@ float NocturneAudioProcessor::detectPitchYin(const float* x, int n, float& confi
         float sum = 0.0f;
         for (int i = 0; i < compareCount; ++i)
         {
-            const float d = x[i] - x[i + tau];
+            const float d = normalised[(size_t)i] - normalised[(size_t)(i + tau)];
             sum += d * d;
         }
         difference[(size_t)tau] = sum;
@@ -281,8 +298,8 @@ void NocturneAudioProcessor::finishLiveNote(double time, int midiSampleOffset, j
     liveTracker = {};
 }
 
-void NocturneAudioProcessor::acceptPitch(float hz, float confidence, double time,
-                                          int midiSampleOffset, juce::MidiBuffer& midi)
+void NocturneAudioProcessor::acceptPitch(float hz, float confidence, float frameRms,
+                                          double time, int midiSampleOffset, juce::MidiBuffer& midi)
 {
     const float accuracy = parameters.getRawParameterValue("accuracy")->load();
     const float glide = parameters.getRawParameterValue("glide")->load();
@@ -325,11 +342,13 @@ void NocturneAudioProcessor::acceptPitch(float hz, float confidence, double time
         liveTracker.activeChordMidi = chord.midi;
         liveTracker.activeChordCount = chord.count;
         juce::ScopedLock lock(notesLock);
+        const float gateDb = parameters.getRawParameterValue("inputGateDb")->load();
+        const int velocity = velocityFromRms(frameRms, gateDb);
         for (int i = 0; i < chord.count; ++i)
         {
             const int noteMidi = chord.midi[(size_t)i];
-            midi.addEvent(juce::MidiMessage::noteOn(1, noteMidi, (juce::uint8)100), midiSampleOffset);
-            notes.add({ noteMidi, events.openTime, 0.06, events.openConfidence });
+            midi.addEvent(juce::MidiMessage::noteOn(1, noteMidi, (juce::uint8)velocity), midiSampleOffset);
+            notes.add({ noteMidi, events.openTime, 0.06, events.openConfidence, velocity });
         }
     }
     else if (events.closed)
@@ -440,15 +459,19 @@ void NocturneAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
                 for (int j = 0; j < analysisWindowSize; ++j)
                     frame[j] = source[(writePosition + j) % analysisWindowSize];
 
+                const float frameRms = getFrameRms(frame, analysisWindowSize);
+                const float gateDb = parameters.getRawParameterValue("inputGateDb")->load();
+                const float gateRms = std::pow(10.0f, gateDb / 20.0f);
                 float confidence = 0.0f;
-                const float hz = detectPitchYin(frame, analysisWindowSize, confidence, sampleRate);
+                const float hz = frameRms >= gateRms
+                    ? detectPitchYin(frame, analysisWindowSize, confidence, sampleRate) : 0.0f;
                 currentPitchHz.store(hz);
 
                 if (isRecording)
                 {
                     const double position = elapsedSeconds - recordingStartTime;
                     recordingPositionSeconds.store(position);
-                    acceptPitch(hz, confidence, position, i, midi);
+                    acceptPitch(hz, confidence, frameRms, position, i, midi);
                 }
             }
         }
@@ -468,6 +491,31 @@ void NocturneAudioProcessor::clearNotes()
     trackerResetRequested.store(true);
 }
 
+
+float NocturneAudioProcessor::getFrameRms(const float* samples, int numSamples)
+{
+    if (samples == nullptr || numSamples <= 0)
+        return 0.0f;
+
+    double sum = 0.0;
+    for (int i = 0; i < numSamples; ++i)
+        sum += (double)samples[i] * (double)samples[i];
+
+    return (float)std::sqrt(sum / (double)numSamples);
+}
+
+int NocturneAudioProcessor::velocityFromRms(float rms, float gateDb)
+{
+    if (rms <= 0.0f)
+        return 1;
+
+    const float levelDb = 20.0f * std::log10(juce::jmax(1.0e-7f, rms));
+    const float lowDb = juce::jlimit(-60.0f, -12.0f, gateDb);
+    const float highDb = -3.0f;
+    const float normalised = juce::jlimit(0.0f, 1.0f, (levelDb - lowDb) / (highDb - lowDb));
+    const float curved = std::pow(normalised, 0.72f);
+    return juce::jlimit(1, 127, 1 + (int)std::round(curved * 126.0f));
+}
 
 void NocturneAudioProcessor::estimateKey(const juce::AudioBuffer<float>& audio, double analysisRate)
 {
@@ -494,6 +542,8 @@ void NocturneAudioProcessor::estimateKey(const juce::AudioBuffer<float>& audio, 
     std::array<double, 12> chroma {};
     const float* samples = audio.getReadPointer(0);
     const int totalSamples = audio.getNumSamples();
+    const float gateDb = parameters.getRawParameterValue("inputGateDb")->load();
+    const float gateRms = std::pow(10.0f, gateDb / 20.0f);
 
     auto peakNear = [&](float frequency) -> float
     {
@@ -519,6 +569,12 @@ void NocturneAudioProcessor::estimateKey(const juce::AudioBuffer<float>& audio, 
             if (sourceIndex >= 0 && sourceIndex < totalSamples)
                 fftData[(size_t)i] = samples[sourceIndex] * window[(size_t)i];
         }
+
+        const int frameStart = juce::jlimit(0, juce::jmax(0, totalSamples - fftSize),
+                                            centreSample - fftSize / 2);
+        const float frameRms = getFrameRms(samples + frameStart, fftSize);
+        if (frameRms < gateRms)
+            continue;
 
         fft.performFrequencyOnlyForwardTransform(fftData.data());
 
@@ -644,6 +700,7 @@ int NocturneAudioProcessor::analysePolyphonicFile(const juce::AudioBuffer<float>
         int offFrames = 0;
         double start = 0.0;
         float peak = 0.0f;
+        int velocity = 100;
     };
 
     juce::dsp::FFT fft(fftOrder);
@@ -682,6 +739,8 @@ int NocturneAudioProcessor::analysePolyphonicFile(const juce::AudioBuffer<float>
     const float* samples = audio.getReadPointer(0);
     const int totalSamples = audio.getNumSamples();
     const double duration = (double)totalSamples / analysisRate;
+    const float gateDb = parameters.getRawParameterValue("inputGateDb")->load();
+    const float gateRms = std::pow(10.0f, gateDb / 20.0f);
     std::array<NoteTrack, 128> tracks;
     std::vector<NoteEvent> detected;
     detected.reserve(256);
@@ -693,8 +752,8 @@ int NocturneAudioProcessor::analysePolyphonicFile(const juce::AudioBuffer<float>
             return;
 
         const double length = juce::jmax(0.0, endTime - track.start);
-        if (length >= 0.055)
-            detected.push_back({ midi, track.start, length, track.peak });
+        if (length >= 0.070)
+            detected.push_back({ midi, track.start, length, track.peak, track.velocity });
 
         track = {};
     };
@@ -710,6 +769,21 @@ int NocturneAudioProcessor::analysePolyphonicFile(const juce::AudioBuffer<float>
             const int sourceIndex = centreSample + i - fftSize / 2;
             if (sourceIndex >= 0 && sourceIndex < totalSamples)
                 fftData[(size_t)i] = samples[sourceIndex] * window[(size_t)i];
+        }
+
+        const int frameStart = juce::jlimit(0, juce::jmax(0, totalSamples - fftSize),
+                                            centreSample - fftSize / 2);
+        const float frameRms = getFrameRms(samples + frameStart, fftSize);
+        if (frameRms < gateRms)
+        {
+            for (int midi = firstMidi; midi <= lastMidi; ++midi)
+            {
+                auto& track = tracks[(size_t)midi];
+                track.onFrames = 0;
+                if (track.active && ++track.offFrames >= 5)
+                    closeTrack(midi, (double)centreSample / analysisRate);
+            }
+            continue;
         }
 
         fft.performFrequencyOnlyForwardTransform(fftData.data());
@@ -752,7 +826,7 @@ int NocturneAudioProcessor::analysePolyphonicFile(const juce::AudioBuffer<float>
                 break;
             if (voice == 0)
                 firstScore = bestScore;
-            else if (bestScore < firstScore * 0.18f)
+            else if (bestScore < firstScore * 0.30f)
                 break;
 
             selected[(size_t)bestMidi] = true;
@@ -772,7 +846,7 @@ int NocturneAudioProcessor::analysePolyphonicFile(const juce::AudioBuffer<float>
         {
             auto& track = tracks[(size_t)midi];
             const float strength = activation[(size_t)midi];
-            const bool present = strength >= 0.18f;
+            const bool present = strength >= 0.30f;
 
             if (present)
             {
@@ -780,11 +854,12 @@ int NocturneAudioProcessor::analysePolyphonicFile(const juce::AudioBuffer<float>
                 if (!track.active)
                 {
                     ++track.onFrames;
-                    if (track.onFrames >= 2)
+                    if (track.onFrames >= 3)
                     {
                         track.active = true;
-                        track.start = juce::jmax(0.0, frameTime - (double)hopSize / analysisRate);
+                        track.start = juce::jmax(0.0, frameTime - 2.0 * (double)hopSize / analysisRate);
                         track.peak = strength;
+                        track.velocity = velocityFromRms(frameRms * std::sqrt(juce::jmax(0.15f, strength)), gateDb);
                     }
                 }
                 else
@@ -798,7 +873,7 @@ int NocturneAudioProcessor::analysePolyphonicFile(const juce::AudioBuffer<float>
                 if (track.active)
                 {
                     ++track.offFrames;
-                    if (track.offFrames >= 4)
+                    if (track.offFrames >= 5)
                     {
                         const double endTime = frameTime -
                             (double)(track.offFrames - 1) * (double)hopSize / analysisRate;
@@ -868,18 +943,23 @@ int NocturneAudioProcessor::analyseFile(const juce::File& file)
     clearNotes();
     PitchTrackerState tracker;
     const int hop = 256; // denser offline frames preserve short vocal articulations
-    const float accuracy = juce::jmin(0.90f, parameters.getRawParameterValue("accuracy")->load());
-    const float glide = parameters.getRawParameterValue("glide")->load() * 0.50f;
+    const float accuracy = juce::jmin(0.86f, parameters.getRawParameterValue("accuracy")->load());
+    const float glide = parameters.getRawParameterValue("glide")->load() * 0.35f;
     const float vibrato = parameters.getRawParameterValue("vibrato")->load() * 0.65f;
-    const float stability = parameters.getRawParameterValue("stability")->load() * 0.45f;
+    const float stability = parameters.getRawParameterValue("stability")->load() * 0.35f;
     const int chordMode = (int)std::round(parameters.getRawParameterValue("chordMode")->load());
+    const float gateDb = parameters.getRawParameterValue("inputGateDb")->load();
+    const float gateRms = std::pow(10.0f, gateDb / 20.0f);
     int detectedCount = 0;
 
     for (int position = 0; position + analysisWindowSize <= totalSamples; position += hop)
     {
+        const float* frameSamples = audio.getReadPointer(0) + position;
+        const float frameRms = getFrameRms(frameSamples, analysisWindowSize);
         float confidence = 0.0f;
-        const float hz = detectPitchYin(audio.getReadPointer(0) + position,
-                                        analysisWindowSize, confidence, fileRate);
+        const float hz = frameRms >= gateRms
+            ? detectPitchYin(frameSamples, analysisWindowSize, confidence, fileRate) : 0.0f;
+        const int frameVelocity = velocityFromRms(frameRms, gateDb);
         const double time = (double)position / fileRate;
 
         const auto previousChord = tracker.activeChordMidi;
@@ -917,7 +997,7 @@ int NocturneAudioProcessor::analyseFile(const juce::File& file)
             tracker.activeChordCount = chord.count;
             for (int i = 0; i < chord.count; ++i)
             {
-                notes.add({ chord.midi[(size_t)i], events.openTime, 0.06, events.openConfidence });
+                notes.add({ chord.midi[(size_t)i], events.openTime, 0.06, events.openConfidence, frameVelocity });
                 ++detectedCount;
             }
         }
@@ -1012,6 +1092,18 @@ void NocturneAudioProcessor::moveNote(int index, int midi, double start)
     }
 }
 
+juce::File NocturneAudioProcessor::createTemporaryMidiFile()
+{
+    auto directory = juce::File::getSpecialLocation(juce::File::tempDirectory)
+        .getChildFile("NOCTURNE_MIDI_Drag");
+    if (!directory.createDirectory() && !directory.isDirectory())
+        return {};
+
+    const auto file = directory.getChildFile("NOCTURNE_" + juce::Uuid().toString() + ".mid");
+    exportMidi(file);
+    return file.existsAsFile() ? file : juce::File{};
+}
+
 void NocturneAudioProcessor::exportMidi(const juce::File& file)
 {
     juce::MidiFile midiFile;
@@ -1031,7 +1123,8 @@ void NocturneAudioProcessor::exportMidi(const juce::File& file)
             : (note.start + note.length);
         const double startTicks = quantizedStart * 960.0 * tempo / 60.0;
         const double endTicks = juce::jmax(quantizedStart + 0.03, quantizedEnd) * 960.0 * tempo / 60.0;
-        sequence.addEvent(juce::MidiMessage::noteOn(1, note.midi, (juce::uint8)100), startTicks);
+        sequence.addEvent(juce::MidiMessage::noteOn(1, note.midi,
+            (juce::uint8)juce::jlimit(1, 127, note.velocity)), startTicks);
         sequence.addEvent(juce::MidiMessage::noteOff(1, note.midi), endTicks);
     }
 
