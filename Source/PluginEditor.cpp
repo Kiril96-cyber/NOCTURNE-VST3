@@ -27,7 +27,7 @@ static juce::String detectedKeyText(const NocturneAudioProcessor& processor)
 NocturneAudioProcessorEditor::NocturneAudioProcessorEditor(NocturneAudioProcessor& p)
     : AudioProcessorEditor(&p), processor(p)
 {
-    setSize(1040, 700);
+    setSize(1040, 740);
 
     auto setupButton = [&](juce::TextButton& button)
     {
@@ -42,6 +42,17 @@ NocturneAudioProcessorEditor::NocturneAudioProcessorEditor(NocturneAudioProcesso
     setupButton(exportButton);
     setupButton(copyButton);
     setupButton(clearButton);
+
+    addAndMakeVisible(dragMidiButton);
+    dragMidiButton.setTooltip("Drag directly into the FL Studio Channel Rack or Piano Roll");
+    dragMidiButton.createMidiFile = [this] { return processor.createTemporaryMidiFile(); };
+    dragMidiButton.dragResult = [this](bool started)
+    {
+        statusLabel.setText(started
+            ? "DRAG MIDI INTO FL STUDIO"
+            : "MIDI DRAG COULD NOT START",
+            juce::dontSendNotification);
+    };
 
     importButton.onClick = [this] { chooseAudio(); };
     recordButton.onClick = [this]
@@ -92,6 +103,8 @@ NocturneAudioProcessorEditor::NocturneAudioProcessorEditor(NocturneAudioProcesso
     setupSlider(vibrato, vibratoLabel, "VIBRATO TOLERANCE", 0, 100, 55);
     setupSlider(stability, stabilityLabel, "TRANSITION STABILITY", 0, 100, 35);
     setupSlider(tempo, tempoLabel, "PROJECT BPM", 40, 240, 120);
+    setupSlider(inputGate, inputGateLabel, "INPUT GATE (dB)", -60, -6, -42);
+    inputGate.setTextValueSuffix(" dB");
 
     speed.onValueChange = [this]
     {
@@ -119,6 +132,12 @@ NocturneAudioProcessorEditor::NocturneAudioProcessorEditor(NocturneAudioProcesso
             parameter->setValueNotifyingHost(parameter->convertTo0to1((float)stability.getValue()));
     };
     tempo.onValueChange = [this] { processor.bpm.store((float)tempo.getValue()); };
+    inputGate.onValueChange = [this]
+    {
+        if (auto* parameter = processor.parameters.getParameter("inputGateDb"))
+            parameter->setValueNotifyingHost(
+                parameter->convertTo0to1((float)inputGate.getValue()));
+    };
 
     addAndMakeVisible(quantize);
     addAndMakeVisible(quantizeLabel);
@@ -469,7 +488,9 @@ void NocturneAudioProcessorEditor::paint(juce::Graphics& g)
         if (ny < roll.getY() || ny + rowHeight > roll.getBottom())
             continue;
 
-        g.setColour(violet.withAlpha(0.90f));
+        const float velocityAlpha = 0.30f + 0.70f *
+            (float)juce::jlimit(1, 127, note.velocity) / 127.0f;
+        g.setColour(violet.withAlpha(velocityAlpha));
         g.fillRoundedRectangle(nx, ny - rowHeight * 0.34f, nw, rowHeight * 0.68f, 3.0f);
         if (nw > 28.0f)
         {
@@ -498,16 +519,17 @@ void NocturneAudioProcessorEditor::paint(juce::Graphics& g)
                42, 604, 690, 15, juce::Justification::left);
 
     g.setColour(line);
-    g.drawLine(28, 628, (float)getWidth() - 28, 628, 1.0f);
+    g.drawLine(28, 676, (float)getWidth() - 28, 676, 1.0f);
 }
 
 void NocturneAudioProcessorEditor::resized()
 {
-    importButton.setBounds(28, 642, 140, 36);
-    recordButton.setBounds(177, 642, 120, 36);
-    exportButton.setBounds(306, 642, 130, 36);
-    copyButton.setBounds(445, 642, 120, 36);
-    clearButton.setBounds(574, 642, 85, 36);
+    importButton.setBounds(28, 690, 140, 36);
+    recordButton.setBounds(177, 690, 120, 36);
+    exportButton.setBounds(306, 690, 130, 36);
+    dragMidiButton.setBounds(445, 690, 120, 36);
+    copyButton.setBounds(574, 690, 120, 36);
+    clearButton.setBounds(703, 690, 85, 36);
 
     speedLabel.setBounds(780, 102, 220, 18);
     speed.setBounds(780, 121, 220, 26);
@@ -527,8 +549,10 @@ void NocturneAudioProcessorEditor::resized()
     chordMode.setBounds(780, 524, 220, 28);
     analysisModeLabel.setBounds(780, 562, 220, 18);
     analysisMode.setBounds(780, 582, 220, 28);
+    inputGateLabel.setBounds(780, 620, 220, 18);
+    inputGate.setBounds(780, 639, 220, 26);
     pitchLabel.setBounds(390, 112, 340, 36);
-    statusLabel.setBounds(675, 648, 340, 24);
+    statusLabel.setBounds(800, 696, 215, 24);
 }
 
 void NocturneAudioProcessorEditor::mouseDown(const juce::MouseEvent& event)
