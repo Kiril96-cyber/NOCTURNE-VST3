@@ -19,3 +19,4 @@ juce_add_plugin(NOCTURNE
 target_sources(NOCTURNE PRIVATE Source/PluginProcessor.cpp Source/PluginEditor.cpp)
 target_compile_definitions(NOCTURNE PUBLIC JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
 target_link_libraries(NOCTURNE PRIVATE juce::juce_audio_utils juce::juce_audio_processors juce::juce_dsp)
+juce_generate_juce_header(NOCTURNE)
