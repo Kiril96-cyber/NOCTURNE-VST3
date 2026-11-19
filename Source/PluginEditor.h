@@ -26,9 +26,9 @@ private:
     juce::TextButton copyButton { "COPY NOTES" };
     juce::TextButton clearButton { "CLEAR" };
 
-    juce::Slider speed, accuracy, glide, vibrato, tempo;
+    juce::Slider speed, accuracy, glide, vibrato, stability, tempo;
     juce::ComboBox quantize;
-    juce::Label speedLabel, accuracyLabel, glideLabel, vibratoLabel, tempoLabel;
+    juce::Label speedLabel, accuracyLabel, glideLabel, vibratoLabel, stabilityLabel, tempoLabel;
     juce::Label quantizeLabel, pitchLabel, statusLabel;
 
     std::vector<float> waveform;
