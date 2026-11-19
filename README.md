@@ -5,6 +5,9 @@ NOCTURNE is a JUCE-based VST3 audio-to-MIDI plugin with a custom dark-fantasy in
 ## Features
 - Import WAV / AIFF / FLAC / MP3 and estimate a dominant monophonic melody.
 - Analyse the live audio input supplied by the DAW while RECORD is active.
+- Choose `VOCAL` analysis for monophonic voice and melodic lines, or `POLYPHONIC` analysis for simultaneous instrument notes and chords.
+- Estimate the imported recording's major/minor key from its chroma profile and show the result in the piano-roll footer.
+- Use a denser offline analysis hop and faster transition decisions to retain short vocal syllables and quick note changes.
 - Display the incoming waveform and detected notes while recording.
 - Close the current note cleanly when recording stops.
 - Stabilize note transitions with confidence gating, pitch smoothing, vibrato tolerance, a configurable transition-stability control, and short-dropout hold.
