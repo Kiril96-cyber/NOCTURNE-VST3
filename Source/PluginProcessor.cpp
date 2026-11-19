@@ -1091,9 +1091,10 @@ void NocturneAudioProcessor::moveNote(int index, int midi, double start)
 
 juce::File NocturneAudioProcessor::createTemporaryMidiFile()
 {
-    auto directory = juce::File::getSpecialLocation(juce::File::tempDirectory)
+    const auto directory = juce::File::getSpecialLocation(juce::File::tempDirectory)
         .getChildFile("NOCTURNE_MIDI_Drag");
-    if (!directory.createDirectory() && !directory.isDirectory())
+    const auto directoryResult = directory.createDirectory();
+    if (directoryResult.failed())
         return {};
 
     const auto file = directory.getChildFile("NOCTURNE_" + juce::Uuid().toString() + ".mid");
