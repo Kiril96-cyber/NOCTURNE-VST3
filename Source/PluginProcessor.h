@@ -66,6 +66,14 @@ private:
         double candidateStart = 0.0;
         double invalidSince = 0.0;
         bool invalidPending = false;
+        std::array<int, 4> activeChordMidi {};
+        int activeChordCount = 0;
+    };
+
+    struct ChordNotes
+    {
+        std::array<int, 4> midi {};
+        int count = 0;
     };
 
     struct PitchTrackerEvents
@@ -80,6 +88,7 @@ private:
     };
 
     static juce::AudioProcessorValueTreeState::ParameterLayout createParams();
+    static ChordNotes makeChordNotes(int rootMidi, int mode);
     static PitchTrackerEvents updatePitchTracker(PitchTrackerState&,
                                                    float hz,
                                                    float confidence,
