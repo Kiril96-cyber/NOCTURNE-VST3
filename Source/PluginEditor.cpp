@@ -250,7 +250,7 @@ NocturneAudioProcessorEditor::NocturneAudioProcessorEditor(NocturneAudioProcesso
     addAndMakeVisible(pianoScrollY);
     pianoScrollY.setSliderStyle(juce::Slider::LinearVertical);
     pianoScrollY.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
-    pianoScrollY.setRange(36.0, 127.0, 1.0);
+    pianoScrollY.setRange(23.0, 127.0, 1.0);
     pianoScrollY.setValue(84.0, juce::dontSendNotification);
     pianoScrollY.setColour(juce::Slider::trackColourId, violet);
     pianoScrollY.setColour(juce::Slider::thumbColourId, juce::Colour(0xffc9a8ff));
@@ -599,7 +599,7 @@ juce::Rectangle<float> NocturneAudioProcessorEditor::pianoBounds() const
 
 int NocturneAudioProcessorEditor::pianoTopMidi() const
 {
-    return juce::jlimit(36, 127, (int)std::round(pianoScrollY.getValue()));
+    return juce::jlimit(23, 127, (int)std::round(pianoScrollY.getValue()));
 }
 
 void NocturneAudioProcessorEditor::paint(juce::Graphics& g)
@@ -610,10 +610,19 @@ void NocturneAudioProcessorEditor::paint(juce::Graphics& g)
         BinaryData::nocturne_background_jpg, BinaryData::nocturne_background_jpgSize);
     if (backgroundImage.isValid())
     {
-        g.setOpacity(0.30f);
-        g.drawImageWithin(backgroundImage, 0, 0, getWidth(), getHeight(),
-                          juce::RectanglePlacement::stretchToFit);
+        // Keep the original artwork proportions and use it as a subtle side-panel
+        // atmosphere layer rather than stretching it over the whole plugin.
+        const juce::Rectangle<int> artBounds(764, 92, 252, 576);
+        g.setColour(bg.withAlpha(0.35f));
+        g.fillRoundedRectangle(artBounds.toFloat(), 12.0f);
+        g.setOpacity(0.22f);
+        g.drawImageWithin(backgroundImage,
+                          artBounds.getX(), artBounds.getY(),
+                          artBounds.getWidth(), artBounds.getHeight(),
+                          juce::RectanglePlacement::centred);
         g.setOpacity(1.0f);
+        g.setColour(bg.withAlpha(0.10f));
+        g.fillRoundedRectangle(artBounds.toFloat(), 12.0f);
     }
 
     const juce::Font logoFont(27.0f, juce::Font::bold);
