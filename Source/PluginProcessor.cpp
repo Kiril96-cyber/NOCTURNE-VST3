@@ -468,6 +468,369 @@ void NocturneAudioProcessor::clearNotes()
     trackerResetRequested.store(true);
 }
 
+
+void NocturneAudioProcessor::estimateKey(const juce::AudioBuffer<float>& audio, double analysisRate)
+{
+    detectedKeyRoot.store(-1);
+    detectedKeyMode.store(0);
+    detectedKeyConfidence.store(0.0f);
+
+    constexpr int fftOrder = 12;
+    constexpr int fftSize = 1 << fftOrder;
+    constexpr int firstMidi = 36;
+    constexpr int lastMidi = 96;
+    constexpr int keyHop = 1024;
+
+    if (audio.getNumSamples() < fftSize || analysisRate < 8000.0)
+        return;
+
+    juce::dsp::FFT fft(fftOrder);
+    std::vector<float> fftData((size_t)fftSize * 2, 0.0f);
+    std::array<float, fftSize> window {};
+    for (int i = 0; i < fftSize; ++i)
+        window[(size_t)i] = 0.5f - 0.5f * std::cos(
+            juce::MathConstants<float>::twoPi * (float)i / (float)(fftSize - 1));
+
+    std::array<double, 12> chroma {};
+    const float* samples = audio.getReadPointer(0);
+    const int totalSamples = audio.getNumSamples();
+
+    auto peakNear = [&](float frequency) -> float
+    {
+        if (frequency <= 0.0f || frequency >= (float)(analysisRate * 0.48))
+            return 0.0f;
+        const int centre = (int)std::round((double)frequency * (double)fftSize / analysisRate);
+        float peak = 0.0f;
+        for (int offset = -1; offset <= 1; ++offset)
+        {
+            const int bin = centre + offset;
+            if (bin >= 1 && bin < fftSize / 2)
+                peak = juce::jmax(peak, fftData[(size_t)bin]);
+        }
+        return peak;
+    };
+
+    for (int centreSample = 0; centreSample < totalSamples; centreSample += keyHop)
+    {
+        std::fill(fftData.begin(), fftData.end(), 0.0f);
+        for (int i = 0; i < fftSize; ++i)
+        {
+            const int sourceIndex = centreSample + i - fftSize / 2;
+            if (sourceIndex >= 0 && sourceIndex < totalSamples)
+                fftData[(size_t)i] = samples[sourceIndex] * window[(size_t)i];
+        }
+
+        fft.performFrequencyOnlyForwardTransform(fftData.data());
+
+        std::array<double, 12> frameChroma {};
+        double frameTotal = 0.0;
+        for (int midi = firstMidi; midi <= lastMidi; ++midi)
+        {
+            const float fundamental = 440.0f * std::pow(2.0f, (float)(midi - 69) / 12.0f);
+            const double salience =
+                (double)peakNear(fundamental) +
+                0.45 * (double)peakNear(fundamental * 2.0f) +
+                0.22 * (double)peakNear(fundamental * 3.0f) +
+                0.12 * (double)peakNear(fundamental * 4.0f);
+            frameChroma[(size_t)(midi % 12)] += salience;
+            frameTotal += salience;
+        }
+
+        if (frameTotal > 1.0e-9)
+            for (int pitchClass = 0; pitchClass < 12; ++pitchClass)
+                chroma[(size_t)pitchClass] += frameChroma[(size_t)pitchClass] / frameTotal;
+    }
+
+    double chromaTotal = 0.0;
+    for (const auto value : chroma)
+        chromaTotal += value;
+    if (chromaTotal <= 1.0e-9)
+        return;
+
+    static constexpr double majorProfile[12] =
+        { 6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88 };
+    static constexpr double minorProfile[12] =
+        { 6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17 };
+
+    double chromaMean = chromaTotal / 12.0;
+    double chromaVariance = 0.0;
+    for (const auto value : chroma)
+        chromaVariance += (value - chromaMean) * (value - chromaMean);
+    if (chromaVariance <= 1.0e-12)
+        return;
+
+    int bestRoot = -1;
+    int bestMode = 0;
+    double bestCorrelation = -2.0;
+    double secondCorrelation = -2.0;
+
+    for (int mode = 0; mode < 2; ++mode)
+    {
+        const double* profile = mode == 0 ? majorProfile : minorProfile;
+        double profileMean = 0.0;
+        for (int i = 0; i < 12; ++i)
+            profileMean += profile[i];
+        profileMean /= 12.0;
+
+        double profileVariance = 0.0;
+        for (int i = 0; i < 12; ++i)
+        {
+            const double delta = profile[i] - profileMean;
+            profileVariance += delta * delta;
+        }
+
+        for (int root = 0; root < 12; ++root)
+        {
+            double covariance = 0.0;
+            for (int pitchClass = 0; pitchClass < 12; ++pitchClass)
+            {
+                const int profileIndex = (pitchClass - root + 12) % 12;
+                covariance += (chroma[(size_t)pitchClass] - chromaMean) *
+                              (profile[profileIndex] - profileMean);
+            }
+
+            const double correlation = covariance /
+                std::sqrt(chromaVariance * juce::jmax(1.0e-12, profileVariance));
+
+            if (correlation > bestCorrelation)
+            {
+                secondCorrelation = bestCorrelation;
+                bestCorrelation = correlation;
+                bestRoot = root;
+                bestMode = mode;
+            }
+            else if (correlation > secondCorrelation)
+            {
+                secondCorrelation = correlation;
+            }
+        }
+    }
+
+    if (bestRoot >= 0 && bestCorrelation > 0.12)
+    {
+        detectedKeyRoot.store(bestRoot);
+        detectedKeyMode.store(bestMode);
+        detectedKeyConfidence.store((float)juce::jlimit(
+            0.0, 1.0, (bestCorrelation - juce::jmax(-1.0, secondCorrelation)) * 3.0));
+    }
+}
+
+int NocturneAudioProcessor::analysePolyphonicFile(const juce::AudioBuffer<float>& audio, double analysisRate)
+{
+    constexpr int fftOrder = 12;
+    constexpr int fftSize = 1 << fftOrder;
+    constexpr int hopSize = 256;
+    constexpr int firstMidi = 36; // C2
+    constexpr int lastMidi = 96;  // C7
+    constexpr int maxVoicesPerFrame = 5;
+
+    if (audio.getNumSamples() < fftSize || analysisRate < 8000.0)
+        return 0;
+
+    struct Partial
+    {
+        int bin = 0;
+        float weight = 0.0f;
+    };
+    struct NoteTemplate
+    {
+        std::vector<Partial> partials;
+        float normSquared = 0.0f;
+    };
+    struct NoteTrack
+    {
+        bool active = false;
+        int onFrames = 0;
+        int offFrames = 0;
+        double start = 0.0;
+        float peak = 0.0f;
+    };
+
+    juce::dsp::FFT fft(fftOrder);
+    std::vector<float> fftData((size_t)fftSize * 2, 0.0f);
+    std::array<float, fftSize> window {};
+    for (int i = 0; i < fftSize; ++i)
+        window[(size_t)i] = 0.5f - 0.5f * std::cos(
+            juce::MathConstants<float>::twoPi * (float)i / (float)(fftSize - 1));
+
+    std::array<NoteTemplate, 128> templates;
+    for (int midi = firstMidi; midi <= lastMidi; ++midi)
+    {
+        const float fundamental = 440.0f * std::pow(2.0f, (float)(midi - 69) / 12.0f);
+        for (int harmonic = 1; harmonic <= 6; ++harmonic)
+        {
+            const float frequency = fundamental * (float)harmonic;
+            if (frequency >= (float)(analysisRate * 0.48))
+                break;
+
+            const int centreBin = (int)std::round(
+                (double)frequency * (double)fftSize / analysisRate);
+            const float harmonicWeight = 1.0f / std::pow((float)harmonic, 0.85f);
+            for (int offset = -1; offset <= 1; ++offset)
+            {
+                const int bin = centreBin + offset;
+                if (bin < 1 || bin >= fftSize / 2)
+                    continue;
+
+                const float weight = harmonicWeight * (offset == 0 ? 1.0f : 0.30f);
+                templates[(size_t)midi].partials.push_back({ bin, weight });
+                templates[(size_t)midi].normSquared += weight * weight;
+            }
+        }
+    }
+
+    const float* samples = audio.getReadPointer(0);
+    const int totalSamples = audio.getNumSamples();
+    const double duration = (double)totalSamples / analysisRate;
+    std::array<NoteTrack, 128> tracks;
+    std::vector<NoteEvent> detected;
+    detected.reserve(256);
+
+    auto closeTrack = [&](int midi, double endTime)
+    {
+        auto& track = tracks[(size_t)midi];
+        if (!track.active)
+            return;
+
+        const double length = juce::jmax(0.0, endTime - track.start);
+        if (length >= 0.055)
+            detected.push_back({ midi, track.start, length, track.peak });
+
+        track = {};
+    };
+
+    std::array<float, fftSize / 2 + 1> residual {};
+    std::array<float, 128> activation {};
+
+    for (int centreSample = 0; centreSample < totalSamples; centreSample += hopSize)
+    {
+        std::fill(fftData.begin(), fftData.end(), 0.0f);
+        for (int i = 0; i < fftSize; ++i)
+        {
+            const int sourceIndex = centreSample + i - fftSize / 2;
+            if (sourceIndex >= 0 && sourceIndex < totalSamples)
+                fftData[(size_t)i] = samples[sourceIndex] * window[(size_t)i];
+        }
+
+        fft.performFrequencyOnlyForwardTransform(fftData.data());
+        for (int bin = 0; bin <= fftSize / 2; ++bin)
+            residual[(size_t)bin] = fftData[(size_t)bin];
+
+        activation.fill(0.0f);
+        float firstScore = 0.0f;
+        std::array<bool, 128> selected {};
+
+        for (int voice = 0; voice < maxVoicesPerFrame; ++voice)
+        {
+            int bestMidi = -1;
+            float bestScore = 0.0f;
+            float bestDot = 0.0f;
+
+            for (int midi = firstMidi; midi <= lastMidi; ++midi)
+            {
+                if (selected[(size_t)midi])
+                    continue;
+
+                const auto& noteTemplate = templates[(size_t)midi];
+                if (noteTemplate.normSquared <= 1.0e-12f)
+                    continue;
+
+                float dot = 0.0f;
+                for (const auto& partial : noteTemplate.partials)
+                    dot += residual[(size_t)partial.bin] * partial.weight;
+
+                const float score = dot / std::sqrt(noteTemplate.normSquared);
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    bestDot = dot;
+                    bestMidi = midi;
+                }
+            }
+
+            if (bestMidi < 0 || bestScore <= 1.0e-6f)
+                break;
+            if (voice == 0)
+                firstScore = bestScore;
+            else if (bestScore < firstScore * 0.18f)
+                break;
+
+            selected[(size_t)bestMidi] = true;
+            activation[(size_t)bestMidi] = bestScore / juce::jmax(1.0e-6f, firstScore);
+
+            const auto& chosen = templates[(size_t)bestMidi];
+            const float coefficient = bestDot / juce::jmax(1.0e-6f, chosen.normSquared);
+            for (const auto& partial : chosen.partials)
+            {
+                float& binValue = residual[(size_t)partial.bin];
+                binValue = juce::jmax(0.0f, binValue - coefficient * partial.weight);
+            }
+        }
+
+        const double frameTime = (double)centreSample / analysisRate;
+        for (int midi = firstMidi; midi <= lastMidi; ++midi)
+        {
+            auto& track = tracks[(size_t)midi];
+            const float strength = activation[(size_t)midi];
+            const bool present = strength >= 0.18f;
+
+            if (present)
+            {
+                track.offFrames = 0;
+                if (!track.active)
+                {
+                    ++track.onFrames;
+                    if (track.onFrames >= 2)
+                    {
+                        track.active = true;
+                        track.start = juce::jmax(0.0, frameTime - (double)hopSize / analysisRate);
+                        track.peak = strength;
+                    }
+                }
+                else
+                {
+                    track.peak = juce::jmax(track.peak, strength);
+                }
+            }
+            else
+            {
+                track.onFrames = 0;
+                if (track.active)
+                {
+                    ++track.offFrames;
+                    if (track.offFrames >= 4)
+                    {
+                        const double endTime = frameTime -
+                            (double)(track.offFrames - 1) * (double)hopSize / analysisRate;
+                        closeTrack(midi, endTime);
+                    }
+                }
+            }
+        }
+    }
+
+    for (int midi = firstMidi; midi <= lastMidi; ++midi)
+        if (tracks[(size_t)midi].active)
+            closeTrack(midi, duration);
+
+    std::stable_sort(detected.begin(), detected.end(),
+        [](const NoteEvent& a, const NoteEvent& b)
+        {
+            if (a.start != b.start)
+                return a.start < b.start;
+            return a.midi < b.midi;
+        });
+
+    {
+        juce::ScopedLock lock(notesLock);
+        notes.clear();
+        for (const auto& note : detected)
+            notes.add(note);
+    }
+
+    return (int)detected.size();
+}
+
 int NocturneAudioProcessor::analyseFile(const juce::File& file)
 {
     juce::AudioFormatManager formats;
