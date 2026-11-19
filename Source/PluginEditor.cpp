@@ -337,7 +337,7 @@ void NocturneAudioProcessorEditor::applyPreset(int presetIndex)
         { 42.0f, 0.68f, 48.0f, 58.0f, 62.0f, -50.0f, 1 }  // Strings/pad
     };
 
-    if (!juce::isPositiveAndBelow(presetIndex, (int)std::size(presets)))
+    if (presetIndex < 0 || presetIndex >= 10)
         return;
 
     const auto& preset = presets[presetIndex];
@@ -636,6 +636,7 @@ void NocturneAudioProcessorEditor::resized()
 
 void NocturneAudioProcessorEditor::mouseDown(const juce::MouseEvent& event)
 {
+    draggedNote = -1;
     const auto roll = pianoBounds();
     if (pianoLockButton.isLocked() || !roll.contains(event.position))
         return;
