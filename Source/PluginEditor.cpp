@@ -274,6 +274,26 @@ juce::Rectangle<float> NocturneAudioProcessorEditor::pianoBounds() const
     return { 28.0f, 298.0f, 720.0f, 300.0f };
 }
 
+int NocturneAudioProcessorEditor::pianoTopMidi() const
+{
+    const auto noteEvents = processor.getNotesCopy();
+    if (noteEvents.isEmpty())
+        return 72;
+
+    int lowest = 127;
+    int highest = 0;
+    for (const auto& note : noteEvents)
+    {
+        lowest = juce::jmin(lowest, note.midi);
+        highest = juce::jmax(highest, note.midi);
+    }
+
+    int top = highest + 2;
+    if (top - 23 > lowest)
+        top = (lowest + highest) / 2 + 12;
+    return juce::jlimit(23, 127, top);
+}
+
 void NocturneAudioProcessorEditor::paint(juce::Graphics& g)
 {
     g.fillAll(bg);
@@ -417,7 +437,7 @@ void NocturneAudioProcessorEditor::paint(juce::Graphics& g)
         visibleStart = juce::jmax(0.0, visibleEnd - 8.0);
     }
     const double visibleDuration = juce::jmax(0.1, visibleEnd - visibleStart);
-    const int topMidi = 84;
+    const int topMidi = pianoTopMidi();
 
     for (const auto& note : noteEvents)
     {
@@ -503,7 +523,7 @@ void NocturneAudioProcessorEditor::mouseDown(const juce::MouseEvent& event)
 
     const auto noteEvents = processor.getNotesCopy();
     const float rowHeight = roll.getHeight() / 24.0f;
-    const int topMidi = 84;
+    const int topMidi = pianoTopMidi();
     double totalTime = 8.0;
     for (const auto& note : noteEvents)
         totalTime = juce::jmax(totalTime, note.start + note.length);
