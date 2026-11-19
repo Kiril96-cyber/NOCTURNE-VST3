@@ -44,7 +44,6 @@ NocturneAudioProcessorEditor::NocturneAudioProcessorEditor(NocturneAudioProcesso
     setupButton(clearButton);
 
     addAndMakeVisible(dragMidiButton);
-    dragMidiButton.setTooltip("Drag directly into the FL Studio Channel Rack or Piano Roll");
     dragMidiButton.createMidiFile = [this] { return processor.createTemporaryMidiFile(); };
     dragMidiButton.dragResult = [this](bool started)
     {
