@@ -44,6 +44,8 @@ void NocturneAudioProcessor::prepareToPlay(double sr, int)
     for (auto& value : liveWaveform)
         value.store(0.0f);
     liveWaveformWrite.store(0);
+    liveWaveformAccumulator = 0.0f;
+    liveWaveformSamples = 0;
 }
 
 float NocturneAudioProcessor::detectPitchYin(const float* x, int n, float& confidence, double analysisRate) const
@@ -200,8 +202,8 @@ PitchTrackerEvents NocturneAudioProcessor::updatePitchTracker(
         state.smoothedMidi = state.smoothedMidi * smoothing + rawMidi * (1.0f - smoothing);
 
     const int candidate = juce::jlimit(0, 127, (int)std::round(state.smoothedMidi));
-    const int confirmations = juce::jlimit(2, 8, 2 + (int)std::round(stability * 0.055f));
-    const double minimumSwitchHold = 0.06 + (double)stability * 0.0016;
+    const int confirmations = juce::jlimit(2, 6, 2 + (int)std::round(stability * 0.04f));
+    const double minimumSwitchHold = 0.045 + (double)stability * 0.0009;
 
     if (state.activeMidi >= 0 && std::abs(state.smoothedMidi - (float)state.activeMidi) < 0.72f)
     {
@@ -399,10 +401,27 @@ void NocturneAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
 
     if (channels > 0)
     {
-        const float* input = buffer.getReadPointer(0);
         for (int i = 0; i < numSamples; ++i)
         {
-            analysisBuffer.setSample(0, writePosition, input[i]);
+            // A vocal may be routed to either side of a stereo mixer insert.
+            // Analyse a mono fold-down instead of silently listening to channel 0 only.
+            float monoSample = 0.0f;
+            for (int channel = 0; channel < channels; ++channel)
+                monoSample += buffer.getSample(channel, i);
+            monoSample /= (float)channels;
+
+            // Store signed samples in a short rolling buffer for a true live waveform.
+            liveWaveformAccumulator += monoSample;
+            if (++liveWaveformSamples >= 32)
+            {
+                const int waveformIndex = liveWaveformWrite.fetch_add(1) % (int)liveWaveform.size();
+                liveWaveform[(size_t)waveformIndex].store(
+                    juce::jlimit(-1.0f, 1.0f, liveWaveformAccumulator / (float)liveWaveformSamples));
+                liveWaveformAccumulator = 0.0f;
+                liveWaveformSamples = 0;
+            }
+
+            analysisBuffer.setSample(0, writePosition, monoSample);
             writePosition = (writePosition + 1) % analysisWindowSize;
             samplesReceived = juce::jmin(analysisWindowSize, samplesReceived + 1);
             ++samplesSinceAnalysis;
@@ -454,9 +473,20 @@ int NocturneAudioProcessor::analyseFile(const juce::File& file)
         return 0;
 
     const int totalSamples = (int)juce::jmin<int64>(reader->lengthInSamples, (int64)std::numeric_limits<int>::max());
-    juce::AudioBuffer<float> audio(1, totalSamples);
-    if (!reader->read(&audio, 0, totalSamples, 0, true, true))
+    const int sourceChannels = juce::jlimit(1, 2, (int)reader->numChannels);
+    juce::AudioBuffer<float> source(sourceChannels, totalSamples);
+    if (!reader->read(&source, 0, totalSamples, 0, true, true))
         return 0;
+
+    juce::AudioBuffer<float> audio(1, totalSamples);
+    float* mono = audio.getWritePointer(0);
+    for (int sample = 0; sample < totalSamples; ++sample)
+    {
+        float sum = 0.0f;
+        for (int channel = 0; channel < sourceChannels; ++channel)
+            sum += source.getSample(channel, sample);
+        mono[sample] = sum / (float)sourceChannels;
+    }
 
     clearNotes();
     PitchTrackerState tracker;
