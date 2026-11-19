@@ -1107,7 +1107,7 @@ juce::File NocturneAudioProcessor::createTemporaryMidiFile()
 
     const auto file = directory.getChildFile("NOCTURNE_" + juce::Uuid().toString() + ".mid");
     exportMidi(file);
-    return file.existsAsFile() ? file : juce::File{};
+    return file.existsAsFile() && file.getSize() > 14 ? file : juce::File{};
 }
 
 void NocturneAudioProcessor::exportMidi(const juce::File& file)
@@ -1134,12 +1134,22 @@ void NocturneAudioProcessor::exportMidi(const juce::File& file)
         sequence.addEvent(juce::MidiMessage::noteOff(1, note.midi), endTicks);
     }
 
+    // Write a self-contained format-0 MIDI file. FL Studio's import and
+    // external file-drop paths need the source tempo to interpret tick positions.
+    sequence.addEvent(juce::MidiMessage::tempoMetaEvent(
+        (int)std::round(60000000.0 / tempo)), 0.0);
+    sequence.addEvent(juce::MidiMessage::timeSignatureMetaEvent(4, 4), 0.0);
     sequence.updateMatchedPairs();
     midiFile.addTrack(sequence);
     file.deleteFile();
     juce::FileOutputStream output(file);
     if (output.openedOk())
-        midiFile.writeTo(output);
+    {
+        const bool written = midiFile.writeTo(output, 0);
+        output.flush();
+        if (!written)
+            file.deleteFile();
+    }
 }
 
 bool NocturneAudioProcessor::copyMidiToClipboard(void* clipboardOwnerWindow)
