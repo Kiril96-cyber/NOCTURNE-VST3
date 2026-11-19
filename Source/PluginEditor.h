@@ -7,6 +7,7 @@ class NocturneMidiDragButton : public juce::Component
 {
 public:
     std::function<juce::File()> createMidiFile;
+    std::function<bool(const juce::File&)> performNativeMidiDrag;
     std::function<void(bool)> dragResult;
 
     void paint(juce::Graphics& g) override
@@ -41,11 +42,12 @@ public:
 
         juce::StringArray files;
         files.add(midiFile.getFullPathName());
-        // Use JUCE's native OS file drag with automatic source-window detection.
-        // Keep the temporary MIDI file on disk after the drop: some hosts read it
-        // asynchronously after the OLE drop callback has returned.
-        dragStarted = juce::DragAndDropContainer::performExternalDragDropOfFiles(
-            files, false, nullptr, {});
+        // Prefer a native Shell IDataObject/DoDragDrop implementation when supplied.
+        // This gives DAWs a real CF_HDROP file object instead of an internal JUCE drag.
+        dragStarted = performNativeMidiDrag
+            ? performNativeMidiDrag(midiFile)
+            : juce::DragAndDropContainer::performExternalDragDropOfFiles(
+                  files, false, this, {});
 
         if (dragResult)
             dragResult(dragStarted);
