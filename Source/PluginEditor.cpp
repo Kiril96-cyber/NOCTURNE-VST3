@@ -75,6 +75,7 @@ NocturneAudioProcessorEditor::NocturneAudioProcessorEditor(NocturneAudioProcesso
     setupSlider(accuracy, accuracyLabel, "NOTE ACCURACY", 0.50, 0.99, 0.78);
     setupSlider(glide, glideLabel, "PITCH GLIDE", 0, 100, 35);
     setupSlider(vibrato, vibratoLabel, "VIBRATO TOLERANCE", 0, 100, 55);
+    setupSlider(stability, stabilityLabel, "TRANSITION STABILITY", 0, 100, 65);
     setupSlider(tempo, tempoLabel, "PROJECT BPM", 40, 240, 120);
 
     speed.onValueChange = [this]
@@ -96,6 +97,11 @@ NocturneAudioProcessorEditor::NocturneAudioProcessorEditor(NocturneAudioProcesso
     {
         if (auto* parameter = processor.parameters.getParameter("vibrato"))
             parameter->setValueNotifyingHost(parameter->convertTo0to1((float)vibrato.getValue()));
+    };
+    stability.onValueChange = [this]
+    {
+        if (auto* parameter = processor.parameters.getParameter("stability"))
+            parameter->setValueNotifyingHost(parameter->convertTo0to1((float)stability.getValue()));
     };
     tempo.onValueChange = [this] { processor.bpm.store((float)tempo.getValue()); };
 
@@ -463,10 +469,12 @@ void NocturneAudioProcessorEditor::resized()
     glide.setBounds(780, 233, 220, 26);
     vibratoLabel.setBounds(780, 270, 220, 18);
     vibrato.setBounds(780, 289, 220, 26);
-    tempoLabel.setBounds(780, 330, 220, 18);
-    tempo.setBounds(780, 349, 220, 26);
-    quantizeLabel.setBounds(780, 388, 220, 18);
-    quantize.setBounds(780, 408, 220, 28);
+    stabilityLabel.setBounds(780, 330, 220, 18);
+    stability.setBounds(780, 349, 220, 26);
+    tempoLabel.setBounds(780, 388, 220, 18);
+    tempo.setBounds(780, 407, 220, 26);
+    quantizeLabel.setBounds(780, 446, 220, 18);
+    quantize.setBounds(780, 466, 220, 28);
     pitchLabel.setBounds(390, 112, 340, 36);
     statusLabel.setBounds(675, 648, 340, 24);
 }
