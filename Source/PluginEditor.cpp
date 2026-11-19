@@ -122,6 +122,20 @@ NocturneAudioProcessorEditor::NocturneAudioProcessorEditor(NocturneAudioProcesso
         processor.quantizeDivision.store(divisions[juce::jlimit(0, 4, id - 1)]);
     };
 
+    addAndMakeVisible(chordMode);
+    addAndMakeVisible(chordModeLabel);
+    chordModeLabel.setText("CHORD MODE", juce::dontSendNotification);
+    chordModeLabel.setColour(juce::Label::textColourId, muted);
+    const juce::String chordNames[] = { "OFF", "MAJOR", "MINOR", "DIMINISHED", "AUGMENTED", "SUS2", "SUS4" };
+    for (int i = 0; i < 7; ++i)
+        chordMode.addItem(chordNames[i], i + 1);
+    chordMode.setSelectedId(1);
+    chordMode.onChange = [this]
+    {
+        if (auto* parameter = processor.parameters.getParameter("chordMode"))
+            parameter->setValueNotifyingHost(parameter->convertTo0to1((float)(chordMode.getSelectedId() - 1)));
+    };
+
     addAndMakeVisible(pitchLabel);
     pitchLabel.setColour(juce::Label::textColourId, violet);
     pitchLabel.setFont(juce::Font(18.0f));
@@ -475,6 +489,8 @@ void NocturneAudioProcessorEditor::resized()
     tempo.setBounds(780, 407, 220, 26);
     quantizeLabel.setBounds(780, 446, 220, 18);
     quantize.setBounds(780, 466, 220, 28);
+    chordModeLabel.setBounds(780, 504, 220, 18);
+    chordMode.setBounds(780, 524, 220, 28);
     pitchLabel.setBounds(390, 112, 340, 36);
     statusLabel.setBounds(675, 648, 340, 24);
 }
