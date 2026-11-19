@@ -1142,7 +1142,7 @@ void NocturneAudioProcessor::exportMidi(const juce::File& file)
         midiFile.writeTo(output);
 }
 
-bool NocturneAudioProcessor::copyMidiToClipboard()
+bool NocturneAudioProcessor::copyMidiToClipboard(void* clipboardOwnerWindow)
 {
     juce::MidiFile midiFile;
     midiFile.setTicksPerQuarterNote(960);
@@ -1173,20 +1173,39 @@ bool NocturneAudioProcessor::copyMidiToClipboard()
     }
 
     sequence.updateMatchedPairs();
+    // FL Studio's clipboard parser accepts a single-track Standard MIDI File.
+    // Embed the actual project tempo so tick positions preserve their timing.
+    sequence.addEvent(juce::MidiMessage::tempoMetaEvent(
+        (int)std::round(60000000.0 / tempo)), 0.0);
+    sequence.addEvent(juce::MidiMessage::timeSignatureMetaEvent(4, 4), 0.0);
+    sequence.updateMatchedPairs();
     midiFile.addTrack(sequence);
 
     juce::MemoryOutputStream midiBytes;
-    if (!midiFile.writeTo(midiBytes) || midiBytes.getDataSize() == 0)
+    if (!midiFile.writeTo(midiBytes, 0) || midiBytes.getDataSize() == 0)
         return false;
 
    #if JUCE_WINDOWS
     // FL Studio's "Paste from MIDI Clipboard" accepts the registered
     // "Standard MIDI File" clipboard format (not plain text).
+    HWND owner = static_cast<HWND>(clipboardOwnerWindow);
+    if (owner == nullptr || !::IsWindow(owner))
+    {
+        owner = ::GetActiveWindow();
+        if (owner == nullptr || !::IsWindow(owner))
+            owner = ::GetForegroundWindow();
+    }
+
     const UINT midiClipboardFormat = ::RegisterClipboardFormatW(L"Standard MIDI File");
-    if (midiClipboardFormat == 0 || !::OpenClipboard(nullptr))
+    // EmptyClipboard requires a real owner HWND. Passing NULL makes SetClipboardData fail.
+    if (owner == nullptr || midiClipboardFormat == 0 || !::OpenClipboard(owner))
         return false;
 
-    ::EmptyClipboard();
+    if (!::EmptyClipboard())
+    {
+        ::CloseClipboard();
+        return false;
+    }
     const SIZE_T byteCount = (SIZE_T)midiBytes.getDataSize();
     HGLOBAL memory = ::GlobalAlloc(GMEM_MOVEABLE, byteCount);
     if (memory == nullptr)
