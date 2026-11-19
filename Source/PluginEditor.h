@@ -3,23 +3,70 @@
 #include "PluginProcessor.h"
 #include <functional>
 
-class NocturneMidiDragButton : public juce::Component
+class NocturneMidiDragButton : public juce::Component, private juce::Timer
 {
 public:
     std::function<juce::File()> createMidiFile;
     std::function<bool(const juce::File&)> performNativeMidiDrag;
     std::function<void(bool)> dragResult;
 
+    NocturneMidiDragButton()
+    {
+        startTimerHz(30);
+    }
+
     void paint(juce::Graphics& g) override
     {
-        const auto bounds = getLocalBounds().toFloat().reduced(0.5f);
-        g.setColour(isMouseOver() ? juce::Colour(0xff30283e) : juce::Colour(0xff191923));
-        g.fillRoundedRectangle(bounds, 6.0f);
-        g.setColour(juce::Colour(0xff9c83c7));
-        g.drawRoundedRectangle(bounds, 6.0f, 1.0f);
-        g.setColour(juce::Colour(0xffe8e3ef));
-        g.setFont(juce::Font(13.0f));
-        g.drawText("DRAG MIDI", getLocalBounds(), juce::Justification::centred);
+        const auto bounds = getLocalBounds().toFloat().reduced(0.8f);
+        const float pulse = 0.5f + 0.5f * std::sin(animationPhase);
+        const auto accent = juce::Colour(0xffbc8cff);
+
+        g.setColour(juce::Colour(0xff17151f).withAlpha(0.96f));
+        g.fillRoundedRectangle(bounds, 7.0f);
+        g.setColour(accent.withAlpha(0.45f + pulse * 0.48f));
+        g.drawRoundedRectangle(bounds, 7.0f, 1.2f + pulse * 0.8f);
+
+        // A small document icon, followed by an animated dotted trail and arrow.
+        const float cy = bounds.getCentreY();
+        juce::Path fileIcon;
+        fileIcon.addRoundedRectangle(11.0f, cy - 9.0f, 13.0f, 18.0f, 2.0f);
+        g.setColour(juce::Colour(0xffd9caff).withAlpha(0.88f));
+        g.strokePath(fileIcon, juce::PathStrokeType(1.2f));
+        g.drawLine(14.0f, cy - 3.0f, 21.0f, cy - 3.0f, 0.9f);
+        g.drawLine(14.0f, cy + 1.0f, 21.0f, cy + 1.0f, 0.9f);
+        g.drawLine(14.0f, cy + 5.0f, 19.0f, cy + 5.0f, 0.9f);
+
+        const float trailStart = 31.0f;
+        const float trailEnd = 54.0f;
+        g.setColour(accent.withAlpha(0.35f));
+        g.drawLine(trailStart, cy, trailEnd, cy, 1.2f);
+        for (int i = 0; i < 4; ++i)
+        {
+            const float x = trailStart + std::fmod(animationPhase * 10.0f + i * 7.0f, 25.0f);
+            g.setColour(accent.withAlpha(0.18f + 0.72f * pulse));
+            g.fillEllipse(x - 1.6f, cy - 1.6f, 3.2f, 3.2f);
+        }
+        juce::Path arrow;
+        arrow.startNewSubPath(trailEnd - 4.0f, cy - 4.0f);
+        arrow.lineTo(trailEnd, cy);
+        arrow.lineTo(trailEnd - 4.0f, cy + 4.0f);
+        g.setColour(accent.withAlpha(0.75f + pulse * 0.25f));
+        g.strokePath(arrow, juce::PathStrokeType(1.5f));
+
+        g.setColour(juce::Colour(0xfff0eaff));
+        g.setFont(juce::Font(12.5f, juce::Font::bold));
+        g.drawText("DRAG MIDI", 61, 3, getWidth() - 68, 17, juce::Justification::centredLeft);
+        g.setColour(juce::Colour(0xffb9accd));
+        g.setFont(juce::Font(9.5f));
+        g.drawText("HOLD  +  MOVE", 61, 18, getWidth() - 68, 13, juce::Justification::centredLeft);
+    }
+
+    void timerCallback() override
+    {
+        animationPhase += 0.11f;
+        if (animationPhase > juce::MathConstants<float>::twoPi)
+            animationPhase -= juce::MathConstants<float>::twoPi;
+        repaint();
     }
 
     void mouseDown(const juce::MouseEvent&) override
@@ -55,6 +102,7 @@ public:
 
 private:
     bool dragStarted = false;
+    float animationPhase = 0.0f;
 };
 
 class NocturnePianoLockButton : public juce::Component
@@ -133,7 +181,6 @@ private:
     void chooseAudio();
     void loadWaveform(const juce::File&);
     void saveMidi();
-    void copyNotes();
     void applyPreset(int presetIndex);
     juce::Rectangle<float> pianoBounds() const;
     int pianoTopMidi() const;
@@ -142,13 +189,14 @@ private:
     juce::TextButton importButton { "IMPORT AUDIO" };
     juce::TextButton recordButton { "RECORD" };
     juce::TextButton exportButton { "EXPORT MIDI" };
-    juce::TextButton copyButton { "COPY MIDI" };
     juce::TextButton clearButton { "CLEAR" };
     NocturneMidiDragButton dragMidiButton;
     NocturnePianoLockButton pianoLockButton;
 
     juce::ComboBox presetSelector;
     juce::Label presetLabel;
+    juce::Slider pianoScrollX, pianoScrollY;
+    juce::Label pianoScrollXLabel, pianoScrollYLabel;
     juce::Slider speed, accuracy, glide, vibrato, stability, tempo, inputGate;
     juce::ComboBox quantize, chordMode, analysisMode;
     juce::Label speedLabel, accuracyLabel, glideLabel, vibratoLabel, stabilityLabel, tempoLabel, inputGateLabel;
@@ -158,6 +206,7 @@ private:
     juce::String importedFileName;
     int draggedNote = -1;
     double dragOffsetSeconds = 0.0;
+    float neonPhase = 0.0f;
 
     std::unique_ptr<juce::FileChooser> midiSaveChooser;
     std::unique_ptr<juce::FileChooser> audioFileChooser;
