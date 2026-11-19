@@ -386,9 +386,6 @@ void NocturneAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         blockPeak = juce::jmax(blockPeak, buffer.getMagnitude(channel, 0, numSamples));
     inputLevel.store(blockPeak);
 
-    const int waveformIndex = liveWaveformWrite.fetch_add(1) % (int)liveWaveform.size();
-    liveWaveform[(size_t)waveformIndex].store(blockPeak);
-
     const bool isRecording = recording.load();
     if (isRecording && !wasRecording)
     {
