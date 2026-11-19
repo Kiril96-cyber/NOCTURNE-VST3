@@ -28,9 +28,9 @@ private:
     juce::TextButton clearButton { "CLEAR" };
 
     juce::Slider speed, accuracy, glide, vibrato, stability, tempo;
-    juce::ComboBox quantize, chordMode;
+    juce::ComboBox quantize, chordMode, analysisMode;
     juce::Label speedLabel, accuracyLabel, glideLabel, vibratoLabel, stabilityLabel, tempoLabel;
-    juce::Label quantizeLabel, chordModeLabel, pitchLabel, statusLabel;
+    juce::Label quantizeLabel, chordModeLabel, analysisModeLabel, pitchLabel, statusLabel;
 
     std::vector<float> waveform;
     juce::String importedFileName;
