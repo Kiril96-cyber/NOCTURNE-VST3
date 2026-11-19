@@ -17,7 +17,7 @@ private:
     void loadWaveform(const juce::File&);
     void saveMidi();
     void copyNotes();
-    juce::Rectangle<float> pianoBounds() const;
+    juce::Rectangle<float> pianoBounds() const;\n    int pianoTopMidi() const;
 
     NocturneAudioProcessor& processor;
     juce::TextButton importButton { "IMPORT AUDIO" };
