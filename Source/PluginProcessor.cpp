@@ -16,6 +16,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout NocturneAudioProcessor::crea
     p.push_back(std::make_unique<juce::AudioParameterFloat>("accuracy", "Note accuracy", 0.50f, 0.99f, 0.78f));
     p.push_back(std::make_unique<juce::AudioParameterFloat>("glide", "Pitch glide", 0.0f, 100.0f, 35.0f));
     p.push_back(std::make_unique<juce::AudioParameterFloat>("vibrato", "Vibrato tolerance", 0.0f, 100.0f, 55.0f));
+    p.push_back(std::make_unique<juce::AudioParameterFloat>("stability", "Transition stability", 0.0f, 100.0f, 65.0f));
     return { p.begin(), p.end() };
 }
 
@@ -131,7 +132,7 @@ float NocturneAudioProcessor::detectPitchYin(const float* x, int n, float& confi
 
 NocturneAudioProcessor::PitchTrackerEvents NocturneAudioProcessor::updatePitchTracker(
     PitchTrackerState& state, float hz, float confidence, double time,
-    float accuracy, float glide, float vibrato, float speed)
+    float accuracy, float glide, float vibrato, float speed, float stability)
 {
     PitchTrackerEvents events;
 
@@ -173,7 +174,8 @@ NocturneAudioProcessor::PitchTrackerEvents NocturneAudioProcessor::updatePitchTr
         state.smoothedMidi = state.smoothedMidi * smoothing + rawMidi * (1.0f - smoothing);
 
     const int candidate = juce::jlimit(0, 127, (int)std::round(state.smoothedMidi));
-    const int confirmations = juce::jlimit(2, 7, 2 + (int)std::round((100.0f - speed) * 0.045f));
+    const int confirmations = juce::jlimit(2, 8, 2 + (int)std::round(stability * 0.055f));
+    const double minimumSwitchHold = 0.06 + (double)stability * 0.0016;
 
     if (state.activeMidi >= 0 && std::abs(state.smoothedMidi - (float)state.activeMidi) < 0.72f)
     {
@@ -243,9 +245,10 @@ void NocturneAudioProcessor::acceptPitch(float hz, float confidence, double time
     const float glide = parameters.getRawParameterValue("glide")->load();
     const float vibrato = parameters.getRawParameterValue("vibrato")->load();
     const float speed = parameters.getRawParameterValue("speed")->load();
+    const float stability = parameters.getRawParameterValue("stability")->load();
 
     const auto events = updatePitchTracker(liveTracker, hz, confidence, time,
-                                            accuracy, glide, vibrato, speed);
+                                            accuracy, glide, vibrato, speed, stability);
 
     if (events.closed)
     {
@@ -389,6 +392,7 @@ int NocturneAudioProcessor::analyseFile(const juce::File& file)
     const float glide = parameters.getRawParameterValue("glide")->load();
     const float vibrato = parameters.getRawParameterValue("vibrato")->load();
     const float speed = parameters.getRawParameterValue("speed")->load();
+    const float stability = parameters.getRawParameterValue("stability")->load();
     int detectedCount = 0;
 
     for (int position = 0; position + analysisWindowSize <= totalSamples; position += hop)
@@ -398,7 +402,7 @@ int NocturneAudioProcessor::analyseFile(const juce::File& file)
                                         analysisWindowSize, confidence, fileRate);
         const double time = (double)position / fileRate;
         const auto events = updatePitchTracker(tracker, hz, confidence, time,
-                                                accuracy, glide, vibrato, speed);
+                                                accuracy, glide, vibrato, speed, stability);
 
         juce::ScopedLock lock(notesLock);
         if (events.closed)
