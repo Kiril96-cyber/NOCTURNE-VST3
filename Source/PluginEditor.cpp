@@ -5,7 +5,7 @@ static const juce::Colour bg(0xff101016), panel(0xff191923), line(0xff343044), v
 NocturneAudioProcessorEditor::NocturneAudioProcessorEditor(NocturneAudioProcessor& p) : AudioProcessorEditor(&p), processor(p)
 {
     setSize(1040, 700);
-    auto setupButton = [&](juce::TextButton& b) { addAndMakeVisible(b); b.setColour(juce::TextButton::buttonColourId, panel); b.setColour(juce::TextButton::textColourOff, text); b.setColour(juce::TextButton::buttonOnColourId, violet); };
+    auto setupButton = [&](juce::TextButton& b) { addAndMakeVisible(b); b.setColour(juce::TextButton::buttonColourId, panel); b.setColour(juce::TextButton::textColourOffId, text); b.setColour(juce::TextButton::buttonOnColourId, violet); };
     setupButton(importButton); setupButton(recordButton); setupButton(exportButton); setupButton(copyButton); setupButton(clearButton);
     importButton.onClick = [this] { chooseAudio(); };
     recordButton.onClick = [this] { bool v = !processor.recording.load(); processor.recording.store(v); recordButton.setButtonText(v ? "■ STOP" : "● RECORD"); };
@@ -56,12 +56,33 @@ void NocturneAudioProcessorEditor::loadWaveform(const juce::File& file)
 }
 void NocturneAudioProcessorEditor::chooseAudio()
 {
-    juce::FileChooser chooser("Import audio", juce::File{}, "*.wav;*.aif;*.aiff;*.flac;*.mp3");
-    if (chooser.browseForFileToOpen()) {
-        statusLabel.setText("Analysing: " + chooser.getResult().getFileName(), juce::dontSendNotification);
-        loadWaveform(chooser.getResult()); processor.analyseFile(chooser.getResult());
-        statusLabel.setText("Analysis complete — drag notes to edit pitch and timing", juce::dontSendNotification);
-    }
+    audioFileChooser = std::make_unique<juce::FileChooser>(
+        "Import audio",
+        juce::File{},
+        "*.wav;*.aif;*.aiff;*.flac;*.mp3"
+    );
+
+    audioFileChooser->launchAsync(
+        juce::FileBrowserComponent::openMode |
+        juce::FileBrowserComponent::canSelectFiles,
+        [this](const juce::FileChooser& chooser)
+        {
+            const auto file = chooser.getResult();
+
+            if (file != juce::File{})
+            {
+                statusLabel.setText("Analysing: " + file.getFileName(), juce::dontSendNotification);
+                loadWaveform(file);
+                processor.analyseFile(file);
+                statusLabel.setText(
+                    "Analysis complete — drag notes to edit pitch and timing",
+                    juce::dontSendNotification
+                );
+            }
+
+            audioFileChooser.reset();
+        }
+    );
 }
 void NocturneAudioProcessorEditor::saveMidi()
 {
