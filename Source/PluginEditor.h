@@ -140,7 +140,7 @@ private:
     juce::TextButton importButton { "IMPORT AUDIO" };
     juce::TextButton recordButton { "RECORD" };
     juce::TextButton exportButton { "EXPORT MIDI" };
-    juce::TextButton copyButton { "COPY NOTES" };
+    juce::TextButton copyButton { "COPY MIDI" };
     juce::TextButton clearButton { "CLEAR" };
     NocturneMidiDragButton dragMidiButton;
     NocturnePianoLockButton pianoLockButton;
