@@ -339,38 +339,22 @@ void NocturneAudioProcessorEditor::paint(juce::Graphics& g)
     g.drawLine(waveLeft, waveMid, waveLeft + waveWidth, waveMid, 1.0f);
 
     juce::Path wavePath;
-    bool hasWave = false;
-
     if (isRecording)
     {
         const auto snapshot = processor.getLiveWaveformSnapshot();
         for (size_t i = 0; i < snapshot.size(); ++i)
         {
             const float x = waveLeft + waveWidth * (float)i / (float)(snapshot.size() - 1);
-            const float amplitude = juce::jlimit(0.0f, 1.0f, snapshot[i]);
-            const float y = waveMid - amplitude * waveAmp;
-            if (!hasWave)
-            {
+            const float sample = juce::jlimit(-1.0f, 1.0f, snapshot[i]);
+            const float y = waveMid - sample * waveAmp;
+            if (i == 0)
                 wavePath.startNewSubPath(x, y);
-                hasWave = true;
-            }
             else
-            {
                 wavePath.lineTo(x, y);
-            }
         }
-        if (hasWave)
-        {
-            for (int i = (int)snapshot.size() - 1; i >= 0; --i)
-            {
-                const float x = waveLeft + waveWidth * (float)i / (float)(snapshot.size() - 1);
-                const float amplitude = juce::jlimit(0.0f, 1.0f, snapshot[(size_t)i]);
-                wavePath.lineTo(x, waveMid + amplitude * waveAmp);
-            }
-            wavePath.closeSubPath();
-            g.setColour(liveColour.withAlpha(0.88f));
-            g.fillPath(wavePath);
-        }
+
+        g.setColour(liveColour.withAlpha(0.95f));
+        g.strokePath(wavePath, juce::PathStrokeType(1.35f));
     }
     else if (!waveform.empty())
     {
