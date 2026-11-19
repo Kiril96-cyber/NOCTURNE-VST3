@@ -3,6 +3,8 @@ name: Build NOCTURNE Windows VST3 installer
 on:
   workflow_dispatch:
   push:
+    branches: [ "main", "fix/live-recording-pitch-stability" ]
+  pull_request:
     branches: [ "main" ]
 
 permissions:
