@@ -1,4 +1,5 @@
 #include "PluginEditor.h"
+#include <BinaryData.h>
 
 #if JUCE_WINDOWS
  #ifndef NOMINMAX
@@ -227,6 +228,35 @@ NocturneAudioProcessorEditor::NocturneAudioProcessorEditor(NocturneAudioProcesso
         repaint();
     };
 
+    pianoScrollXLabel.setText("X  /  TIME", juce::dontSendNotification);
+    pianoScrollYLabel.setText("Y", juce::dontSendNotification);
+    for (auto* label : { &pianoScrollXLabel, &pianoScrollYLabel })
+    {
+        addAndMakeVisible(*label);
+        label->setColour(juce::Label::textColourId, muted);
+        label->setFont(juce::Font(9.0f, juce::Font::bold));
+    }
+
+    addAndMakeVisible(pianoScrollX);
+    pianoScrollX.setSliderStyle(juce::Slider::LinearHorizontal);
+    pianoScrollX.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+    pianoScrollX.setRange(0.0, 1.0, 0.001);
+    pianoScrollX.setValue(0.0, juce::dontSendNotification);
+    pianoScrollX.setColour(juce::Slider::trackColourId, violet);
+    pianoScrollX.setColour(juce::Slider::thumbColourId, juce::Colour(0xffc9a8ff));
+    pianoScrollX.setTooltip("Scroll Piano Roll horizontally through the timeline");
+    pianoScrollX.onValueChange = [this] { repaint(); };
+
+    addAndMakeVisible(pianoScrollY);
+    pianoScrollY.setSliderStyle(juce::Slider::LinearVertical);
+    pianoScrollY.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+    pianoScrollY.setRange(36.0, 127.0, 1.0);
+    pianoScrollY.setValue(84.0, juce::dontSendNotification);
+    pianoScrollY.setColour(juce::Slider::trackColourId, violet);
+    pianoScrollY.setColour(juce::Slider::thumbColourId, juce::Colour(0xffc9a8ff));
+    pianoScrollY.setTooltip("Scroll Piano Roll vertically through pitches");
+    pianoScrollY.onValueChange = [this] { repaint(); };
+
     auto setupButton = [&](juce::TextButton& button)
     {
         addAndMakeVisible(button);
@@ -238,7 +268,6 @@ NocturneAudioProcessorEditor::NocturneAudioProcessorEditor(NocturneAudioProcesso
     setupButton(importButton);
     setupButton(recordButton);
     setupButton(exportButton);
-    setupButton(copyButton);
     setupButton(clearButton);
 
     addAndMakeVisible(dragMidiButton);
@@ -265,6 +294,7 @@ NocturneAudioProcessorEditor::NocturneAudioProcessorEditor(NocturneAudioProcesso
         {
             processor.clearNotes();
             processor.setRecording(true);
+            pianoScrollX.setValue(1.0, juce::dontSendNotification);
             statusLabel.setText("RECORDING - SING OR PLAY INTO THE INPUT", juce::dontSendNotification);
         }
         else
@@ -275,7 +305,6 @@ NocturneAudioProcessorEditor::NocturneAudioProcessorEditor(NocturneAudioProcesso
         repaint();
     };
     exportButton.onClick = [this] { saveMidi(); };
-    copyButton.onClick = [this] { copyNotes(); };
     clearButton.onClick = [this]
     {
         processor.setRecording(false);
@@ -439,9 +468,15 @@ void NocturneAudioProcessorEditor::chooseAudio()
             if (file != juce::File{})
             {
                 processor.setRecording(false);
+                pianoScrollX.setValue(0.0, juce::dontSendNotification);
                 statusLabel.setText("ANALYSING: " + file.getFileName(), juce::dontSendNotification);
                 loadWaveform(file);
                 const int count = processor.analyseFile(file);
+                int highestMidi = 60;
+                for (const auto& note : processor.getNotesCopy())
+                    highestMidi = juce::jmax(highestMidi, note.midi);
+                pianoScrollY.setValue(juce::jlimit(36, 127, highestMidi + 2),
+                                      juce::dontSendNotification);
                 statusLabel.setText(count > 0
                     ? "ANALYSIS COMPLETE - " + juce::String(count) + " NOTES"
                     : "NO NOTES DETECTED - CHECK SOURCE / ANALYSIS MODE",
@@ -473,20 +508,6 @@ void NocturneAudioProcessorEditor::saveMidi()
             }
             midiSaveChooser.reset();
         });
-}
-
-void NocturneAudioProcessorEditor::copyNotes()
-{
-    void* ownerWindow = nullptr;
-    if (auto* peer = getPeer())
-        ownerWindow = peer->getNativeHandle();
-
-    if (processor.copyMidiToClipboard(ownerWindow))
-        statusLabel.setText("MIDI COPIED  |  PIANO ROLL: SHIFT+CTRL+V",
-                            juce::dontSendNotification);
-    else
-        statusLabel.setText("MIDI CLIPBOARD FAILED  |  CHECK NOTES / FOCUS",
-                            juce::dontSendNotification);
 }
 
 void NocturneAudioProcessorEditor::applyPreset(int presetIndex)
@@ -534,6 +555,9 @@ void NocturneAudioProcessorEditor::timerCallback()
     const float hz = processor.currentPitchHz.load();
     const bool isRecording = processor.recording.load();
     const float level = processor.inputLevel.load();
+    neonPhase += 0.075f;
+    if (neonPhase > juce::MathConstants<float>::twoPi)
+        neonPhase -= juce::MathConstants<float>::twoPi;
 
     recordButton.setButtonText(isRecording ? "STOP" : "RECORD");
 
@@ -575,31 +599,44 @@ juce::Rectangle<float> NocturneAudioProcessorEditor::pianoBounds() const
 
 int NocturneAudioProcessorEditor::pianoTopMidi() const
 {
-    const auto noteEvents = processor.getNotesCopy();
-    if (noteEvents.isEmpty())
-        return 72;
-
-    int lowest = 127;
-    int highest = 0;
-    for (const auto& note : noteEvents)
-    {
-        lowest = juce::jmin(lowest, note.midi);
-        highest = juce::jmax(highest, note.midi);
-    }
-
-    int top = highest + 2;
-    if (top - 23 > lowest)
-        top = (lowest + highest) / 2 + 12;
-    return juce::jlimit(23, 127, top);
+    return juce::jlimit(36, 127, (int)std::round(pianoScrollY.getValue()));
 }
 
 void NocturneAudioProcessorEditor::paint(juce::Graphics& g)
 {
     g.fillAll(bg);
 
-    g.setColour(violet);
-    g.setFont(juce::Font(27.0f, juce::Font::bold));
-    g.drawText("NOCTURNE", 28, 18, 260, 38, juce::Justification::left);
+    const auto& backgroundImage = juce::ImageCache::getFromMemory(
+        BinaryData::nocturne_background_jpg, BinaryData::nocturne_background_jpgSize);
+    if (backgroundImage.isValid())
+    {
+        g.setOpacity(0.30f);
+        g.drawImageWithin(backgroundImage, 0, 0, getWidth(), getHeight(),
+                          juce::RectanglePlacement::stretchToFit);
+        g.setOpacity(1.0f);
+    }
+
+    const juce::Font logoFont(27.0f, juce::Font::bold);
+    const juce::String logo = "NOCTURNE";
+    float glyphX = 28.0f;
+    for (int i = 0; i < logo.length(); ++i)
+    {
+        const juce::String glyph = logo.substring(i, i + 1);
+        const float glyphWidth = logoFont.getStringWidthFloat(glyph);
+        const float wave = 0.5f + 0.5f * std::sin(neonPhase - (float)i * 0.68f);
+        const auto neon = juce::Colour(0xffb68aff).interpolatedWith(
+            juce::Colour(0xff42dcff), wave);
+        const juce::Rectangle<int> glyphBounds(
+            (int)glyphX, 18, (int)std::ceil(glyphWidth + 2.0f), 38);
+
+        g.setFont(logoFont);
+        g.setColour(neon.withAlpha(0.10f + wave * 0.13f));
+        g.drawText(glyph, glyphBounds.translated(-1, 0), juce::Justification::centredLeft);
+        g.drawText(glyph, glyphBounds.translated(1, 0), juce::Justification::centredLeft);
+        g.setColour(neon.withAlpha(0.68f + wave * 0.32f));
+        g.drawText(glyph, glyphBounds, juce::Justification::centredLeft);
+        glyphX += glyphWidth;
+    }
 
     g.setColour(muted);
     g.setFont(11.0f);
@@ -607,7 +644,7 @@ void NocturneAudioProcessorEditor::paint(juce::Graphics& g)
     g.setColour(line);
     g.drawLine(28, 82, (float)getWidth() - 28, 82, 1.0f);
 
-    g.setColour(panel);
+    g.setColour(panel.withAlpha(0.90f));
     g.fillRoundedRectangle(28, 98, 720, 58, 8);
     g.setColour(muted);
     g.setFont(11.0f);
@@ -617,7 +654,7 @@ void NocturneAudioProcessorEditor::paint(juce::Graphics& g)
     g.drawText(pitchLabel.getText(), 44, 125, 650, 24, juce::Justification::left);
 
     const juce::Rectangle<float> wave(28, 174, 720, 104);
-    g.setColour(panel);
+    g.setColour(panel.withAlpha(0.88f));
     g.fillRoundedRectangle(wave, 8);
 
     const bool isRecording = processor.recording.load();
@@ -684,7 +721,7 @@ void NocturneAudioProcessorEditor::paint(juce::Graphics& g)
     }
 
     const auto roll = pianoBounds();
-    g.setColour(panel);
+    g.setColour(panel.withAlpha(0.90f));
     g.fillRoundedRectangle(roll, 8);
     g.setColour(muted);
     g.setFont(10.5f);
@@ -692,6 +729,7 @@ void NocturneAudioProcessorEditor::paint(juce::Graphics& g)
                42, 286, 560, 15, juce::Justification::left);
     g.drawText(pianoLockButton.isLocked() ? "LOCKED" : "EDIT",
                646, 286, 54, 15, juce::Justification::right);
+    g.drawText("Y", 754, 286, 18, 12, juce::Justification::centred);
 
     const int rows = 24;
     const float rowHeight = roll.getHeight() / (float)rows;
@@ -714,14 +752,10 @@ void NocturneAudioProcessorEditor::paint(juce::Graphics& g)
     for (const auto& note : noteEvents)
         totalTime = juce::jmax(totalTime, note.start + note.length);
 
-    double visibleStart = 0.0;
-    double visibleEnd = totalTime;
-    if (isRecording)
-    {
-        visibleEnd = juce::jmax(8.0, recordPosition + 0.25);
-        visibleStart = juce::jmax(0.0, visibleEnd - 8.0);
-    }
-    const double visibleDuration = juce::jmax(0.1, visibleEnd - visibleStart);
+    const double visibleDuration = 8.0;
+    const double maxScrollStart = juce::jmax(0.0, totalTime - visibleDuration);
+    const double visibleStart = maxScrollStart * pianoScrollX.getValue();
+    const double visibleEnd = visibleStart + visibleDuration;
     const int topMidi = pianoTopMidi();
 
     for (const auto& note : noteEvents)
@@ -770,6 +804,7 @@ void NocturneAudioProcessorEditor::paint(juce::Graphics& g)
                "     " + detectedKeyText(processor) +
                "     BPM " + juce::String(processor.bpm.load(), 1),
                42, 604, 690, 15, juce::Justification::left);
+    g.drawText("X  /  TIME", 42, 628, 64, 16, juce::Justification::left);
 
     g.setColour(line);
     g.drawLine(28, 676, (float)getWidth() - 28, 676, 1.0f);
@@ -780,13 +815,16 @@ void NocturneAudioProcessorEditor::resized()
     presetLabel.setBounds(780, 8, 220, 16);
     presetSelector.setBounds(780, 25, 220, 30);
     pianoLockButton.setBounds(712, 281, 24, 22);
+    pianoScrollYLabel.setBounds(754, 284, 18, 12);
+    pianoScrollY.setBounds(752, 300, 20, 296);
+    pianoScrollXLabel.setBounds(42, 628, 64, 16);
+    pianoScrollX.setBounds(108, 625, 620, 20);
 
     importButton.setBounds(28, 690, 140, 36);
     recordButton.setBounds(177, 690, 120, 36);
     exportButton.setBounds(306, 690, 130, 36);
-    dragMidiButton.setBounds(445, 690, 120, 36);
-    copyButton.setBounds(574, 690, 120, 36);
-    clearButton.setBounds(703, 690, 85, 36);
+    dragMidiButton.setBounds(445, 688, 205, 40);
+    clearButton.setBounds(660, 690, 90, 36);
 
     speedLabel.setBounds(780, 102, 220, 18);
     speed.setBounds(780, 121, 220, 26);
@@ -809,7 +847,7 @@ void NocturneAudioProcessorEditor::resized()
     inputGateLabel.setBounds(780, 620, 220, 18);
     inputGate.setBounds(780, 639, 220, 26);
     pitchLabel.setBounds(390, 112, 340, 36);
-    statusLabel.setBounds(800, 696, 215, 24);
+    statusLabel.setBounds(770, 696, 245, 24);
 }
 
 void NocturneAudioProcessorEditor::mouseDown(const juce::MouseEvent& event)
@@ -826,11 +864,9 @@ void NocturneAudioProcessorEditor::mouseDown(const juce::MouseEvent& event)
     for (const auto& note : noteEvents)
         totalTime = juce::jmax(totalTime, note.start + note.length);
 
-    const bool isRecording = processor.recording.load();
-    const double recordPosition = processor.recordingPositionSeconds.load();
-    const double visibleEnd = isRecording ? juce::jmax(8.0, recordPosition + 0.25) : totalTime;
-    const double visibleStart = isRecording ? juce::jmax(0.0, visibleEnd - 8.0) : 0.0;
-    const double visibleDuration = juce::jmax(0.1, visibleEnd - visibleStart);
+    const double visibleDuration = 8.0;
+    const double maxScrollStart = juce::jmax(0.0, totalTime - visibleDuration);
+    const double visibleStart = maxScrollStart * pianoScrollX.getValue();
 
     for (int i = noteEvents.size() - 1; i >= 0; --i)
     {
@@ -866,11 +902,9 @@ void NocturneAudioProcessorEditor::mouseDrag(const juce::MouseEvent& event)
     for (const auto& note : noteEvents)
         totalTime = juce::jmax(totalTime, note.start + note.length);
 
-    const bool isRecording = processor.recording.load();
-    const double recordPosition = processor.recordingPositionSeconds.load();
-    const double visibleEnd = isRecording ? juce::jmax(8.0, recordPosition + 0.25) : totalTime;
-    const double visibleStart = isRecording ? juce::jmax(0.0, visibleEnd - 8.0) : 0.0;
-    const double visibleDuration = juce::jmax(0.1, visibleEnd - visibleStart);
+    const double visibleDuration = 8.0;
+    const double maxScrollStart = juce::jmax(0.0, totalTime - visibleDuration);
+    const double visibleStart = maxScrollStart * pianoScrollX.getValue();
 
     const float rowHeight = roll.getHeight() / 24.0f;
     const int topMidi = pianoTopMidi();
