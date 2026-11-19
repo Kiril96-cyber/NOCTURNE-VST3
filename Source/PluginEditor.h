@@ -25,5 +25,6 @@ private:
     std::vector<float> waveform;
     int draggedNote = -1;
     double dragOffsetSeconds = 0.0;
+    std::unique_ptr<juce::FileChooser> midiSaveChooser;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(NocturneAudioProcessorEditor)
 };
