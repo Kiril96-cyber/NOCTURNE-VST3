@@ -65,10 +65,33 @@ void NocturneAudioProcessorEditor::chooseAudio()
 }
 void NocturneAudioProcessorEditor::saveMidi()
 {
-    juce::FileChooser chooser("Export MIDI", juce::File::getSpecialLocation(juce::File::userDocumentsDirectory).getChildFile("NOCTURNE.mid"), "*.mid");
-    if (chooser.browseForFileToSave(true)) { processor.exportMidi(chooser.getResult().withFileExtension("mid")); statusLabel.setText("MIDI exported with current BPM / quantize", juce::dontSendNotification); }
+    midiSaveChooser = std::make_unique<juce::FileChooser>(
+        "Export MIDI",
+        juce::File::getSpecialLocation(juce::File::userDocumentsDirectory).getChildFile("NOCTURNE.mid"),
+        "*.mid"
+    );
+
+    midiSaveChooser->launchAsync(
+        juce::FileBrowserComponent::saveMode |
+        juce::FileBrowserComponent::canSelectFiles,
+        [this](const juce::FileChooser& chooser)
+        {
+            const auto file = chooser.getResult();
+
+            if (file != juce::File{})
+            {
+                processor.exportMidi(file.withFileExtension("mid"));
+                statusLabel.setText(
+                    "MIDI exported with current BPM / quantize",
+                    juce::dontSendNotification
+                );
+            }
+
+            midiSaveChooser.reset();
+        }
+    );
 }
-void NocturneAudioProcessorEditor::copyNotes() { juce::SystemClipboard::copyText(processor.notesAsText()); statusLabel.setText("Note names copied", juce::dontSendNotification); }
+void NocturneAudioProcessorEditor::copyNotes() { juce::SystemClipboard::copyTextToClipboard(processor.notesAsText()); statusLabel.setText("Note names copied", juce::dontSendNotification); }
 void NocturneAudioProcessorEditor::timerCallback()
 {
     float hz = processor.currentPitchHz.load();
