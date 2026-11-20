@@ -178,6 +178,26 @@ static const juce::Colour muted(0xff938ba3);
 static const juce::Colour waveformColour(0xff6c5b88);
 static const juce::Colour liveColour(0xffb39adf);
 
+static juce::Array<int> scaleSemitones(int scaleId)
+{
+    switch (scaleId)
+    {
+        case 2:  return { 0, 2, 3, 5, 7, 8, 10 };       // Natural minor
+        case 3:  return { 0, 2, 3, 5, 7, 8, 11 };       // Harmonic minor
+        case 4:  return { 0, 2, 3, 5, 7, 9, 11 };       // Melodic minor
+        case 5:  return { 0, 2, 4, 7, 9 };             // Major pentatonic
+        case 6:  return { 0, 3, 5, 7, 10 };            // Minor pentatonic
+        case 7:  return { 0, 3, 5, 6, 7, 10 };         // Blues
+        case 8:  return { 0, 2, 3, 5, 7, 9, 10 };       // Dorian
+        case 9:  return { 0, 1, 3, 5, 7, 8, 10 };       // Phrygian
+        case 10: return { 0, 2, 4, 6, 7, 9, 11 };      // Lydian
+        case 11: return { 0, 2, 4, 5, 7, 9, 10 };      // Mixolydian
+        case 12: return { 0, 1, 3, 5, 6, 8, 10 };      // Locrian
+        case 1:  return { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11 }; // Chromatic
+        default: return { 0, 2, 4, 5, 7, 9, 11 };      // Major
+    }
+}
+
 static juce::String detectedKeyText(const NocturneAudioProcessor& processor)
 {
     static const juce::StringArray pitchNames {
@@ -219,6 +239,45 @@ NocturneAudioProcessorEditor::NocturneAudioProcessorEditor(NocturneAudioProcesso
         applyPreset(presetSelector.getSelectedId() - 1);
     };
     addAndMakeVisible(presetSelector);
+
+    // Musical key and scale controls for Piano Roll guidance and optional note snapping.
+    keyLabel.setText("KEY", juce::dontSendNotification);
+    scaleLabel.setText("SCALE", juce::dontSendNotification);
+    for (auto* label : { &keyLabel, &scaleLabel })
+    {
+        addAndMakeVisible(*label);
+        label->setColour(juce::Label::textColourId, muted);
+        label->setFont(juce::Font(8.5f, juce::Font::bold));
+    }
+    static const char* keyNames[] = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
+    for (int i = 0; i < 12; ++i)
+        keySelector.addItem(keyNames[i], i + 1);
+    keySelector.setSelectedId(1, juce::dontSendNotification);
+    scaleSelector.addItem("Major", 1);
+    scaleSelector.addItem("Natural Minor", 2);
+    scaleSelector.addItem("Harmonic Minor", 3);
+    scaleSelector.addItem("Melodic Minor", 4);
+    scaleSelector.addItem("Major Pentatonic", 5);
+    scaleSelector.addItem("Minor Pentatonic", 6);
+    scaleSelector.addItem("Blues", 7);
+    scaleSelector.addItem("Dorian", 8);
+    scaleSelector.addItem("Phrygian", 9);
+    scaleSelector.addItem("Lydian", 10);
+    scaleSelector.addItem("Mixolydian", 11);
+    scaleSelector.addItem("Locrian", 12);
+    scaleSelector.addItem("Chromatic", 13);
+    for (auto* combo : { &keySelector, &scaleSelector })
+    {
+        addAndMakeVisible(*combo);
+        combo->setColour(juce::ComboBox::backgroundColourId, panel);
+        combo->setColour(juce::ComboBox::textColourId, text);
+        combo->setColour(juce::ComboBox::outlineColourId, line);
+        combo->onChange = [this] { repaint(); };
+    }
+    scaleSnapButton.setColour(juce::ToggleButton::textColourId, text);
+    scaleSnapButton.setColour(juce::ToggleButton::tickColourId, violet);
+    scaleSnapButton.setTooltip("When enabled, newly created and moved notes snap to the selected scale");
+    addAndMakeVisible(scaleSnapButton);
 
     addAndMakeVisible(pianoLockButton);
     pianoLockButton.onChange = [this](bool locked)
@@ -517,6 +576,31 @@ void NocturneAudioProcessorEditor::saveMidi()
         });
 }
 
+bool NocturneAudioProcessorEditor::isPitchInSelectedScale(int midi) const
+{
+    const int root = juce::jlimit(0, 11, keySelector.getSelectedId() - 1);
+    const int relativePitch = (midi - root + 120) % 12;
+    return scaleSemitones(scaleSelector.getSelectedId()).contains(relativePitch);
+}
+
+int NocturneAudioProcessorEditor::snapMidiToSelectedScale(int midi) const
+{
+    if (!scaleSnapButton.getToggleState())
+        return juce::jlimit(0, 127, midi);
+
+    midi = juce::jlimit(0, 127, midi);
+    for (int distance = 0; distance <= 6; ++distance)
+    {
+        const int lower = midi - distance;
+        if (lower >= 0 && isPitchInSelectedScale(lower))
+            return lower;
+        const int upper = midi + distance;
+        if (distance > 0 && upper <= 127 && isPitchInSelectedScale(upper))
+            return upper;
+    }
+    return midi;
+}
+
 void NocturneAudioProcessorEditor::applyPreset(int presetIndex)
 {
     struct Preset
@@ -746,13 +830,30 @@ void NocturneAudioProcessorEditor::paint(juce::Graphics& g)
     g.fillRoundedRectangle(roll, 6.0f);
     g.setColour(muted);
     g.setFont(10.5f);
-    g.drawText("PIANO ROLL  /  LIVE NOTES UPDATE DURING RECORDING",
-               40, 288, 430, 15, juce::Justification::left);
+    g.drawText("PIANO ROLL",
+               40, 288, 105, 15, juce::Justification::left);
     g.drawText(pianoLockButton.isLocked() ? "LOCKED" : "EDIT",
                492, 288, 48, 15, juce::Justification::right);
 
     const int rows = juce::jlimit(6, 48, (int)std::round(24.0f / pianoZoom));
     const float rowHeight = roll.getHeight() / (float)rows;
+    const int selectedRoot = juce::jlimit(0, 11, keySelector.getSelectedId() - 1);
+    const auto selectedScale = scaleSemitones(scaleSelector.getSelectedId());
+    for (int row = 0; row < rows; ++row)
+    {
+        const int midi = topMidi - row;
+        const int relativePitch = (midi - selectedRoot + 120) % 12;
+        if (selectedScale.contains(relativePitch))
+        {
+            g.setColour(violet.withAlpha(0.075f));
+            g.fillRect(roll.getX(), roll.getY() + row * rowHeight, roll.getWidth(), rowHeight);
+        }
+        else
+        {
+            g.setColour(juce::Colour(0xff08070d).withAlpha(0.19f));
+            g.fillRect(roll.getX(), roll.getY() + row * rowHeight, roll.getWidth(), rowHeight);
+        }
+    }
     for (int row = 0; row <= rows; ++row)
     {
         const float y = roll.getY() + row * rowHeight;
@@ -860,6 +961,11 @@ void NocturneAudioProcessorEditor::resized()
     presetSelector.setBounds(780, 25, 220, 30);
     undoButton.setBounds(548, 285, 58, 20);
     redoButton.setBounds(610, 285, 58, 20);
+    keyLabel.setBounds(155, 286, 28, 12);
+    keySelector.setBounds(155, 298, 66, 23);
+    scaleLabel.setBounds(228, 286, 42, 12);
+    scaleSelector.setBounds(228, 298, 142, 23);
+    scaleSnapButton.setBounds(376, 299, 62, 22);
     pianoLockButton.setBounds(680, 284, 24, 22);
     pianoScrollYLabel.setBounds(718, 312, 20, 14);
     pianoScrollY.setBounds(720, 332, 18, 246);
@@ -1022,8 +1128,8 @@ void NocturneAudioProcessorEditor::mouseDrag(const juce::MouseEvent& event)
     {
         const int rows = juce::jlimit(6, 48, (int)std::round(24.0f / pianoZoom));
     const float rowHeight = roll.getHeight() / (float)rows;
-        const int midi = pianoTopMidi() -
-            (int)std::floor((event.position.y - roll.getY()) / rowHeight);
+        const int midi = snapMidiToSelectedScale(pianoTopMidi() -
+            (int)std::floor((event.position.y - roll.getY()) / rowHeight));
         const double startTime = visibleStart +
             ((event.position.x - roll.getX() - 8.0) / (roll.getWidth() - 16.0)) *
             visibleDuration - dragOffsetSeconds;
@@ -1100,7 +1206,7 @@ void NocturneAudioProcessorEditor::mouseDoubleClick(const juce::MouseEvent& even
     const double startTime = juce::jmax(0.0, visibleStart +
         ((event.position.x - roll.getX() - 8.0) / (roll.getWidth() - 16.0)) * visibleDuration);
     const int visibleRows = juce::jlimit(6, 48, (int)std::round(24.0f / pianoZoom));
-    const int midi = juce::jlimit(0, 127, pianoTopMidi() -
+    const int midi = snapMidiToSelectedScale(pianoTopMidi() -
         (int)std::floor((event.position.y - roll.getY()) / (roll.getHeight() / (float)visibleRows)));
     pushUndoState();
     processor.addNote(midi, startTime, 0.25, 100);
