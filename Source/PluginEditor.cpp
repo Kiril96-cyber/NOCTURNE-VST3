@@ -772,7 +772,7 @@ void NocturneAudioProcessorEditor::paint(juce::Graphics& g)
     if (isRecording)
         totalTime = juce::jmax(totalTime, recordPosition + 0.25);
 
-    const double visibleDuration = 8.0;
+    const double visibleDuration = 8.0 / (double)pianoZoom;
     const double maxScrollStart = juce::jmax(0.0, totalTime - visibleDuration);
     const double visibleStart = maxScrollStart * pianoScrollX.getValue();
     const double visibleEnd = visibleStart + visibleDuration;
@@ -914,7 +914,8 @@ void NocturneAudioProcessorEditor::mouseDown(const juce::MouseEvent& event)
     for (const auto& n : notesNow) totalTime = juce::jmax(totalTime, n.start + n.length);
     const double visibleDuration = 8.0;
     const double visibleStart = juce::jmax(0.0, totalTime - visibleDuration) * pianoScrollX.getValue();
-    const float rowHeight = roll.getHeight() / 24.0f;
+    const int rows = juce::jlimit(6, 48, (int)std::round(24.0f / pianoZoom));
+    const float rowHeight = roll.getHeight() / (float)rows;
     const int topMidi = pianoTopMidi();
 
     if (velocityBounds.contains(event.position))
@@ -1015,7 +1016,8 @@ void NocturneAudioProcessorEditor::mouseDrag(const juce::MouseEvent& event)
     }
     else
     {
-        const float rowHeight = roll.getHeight() / 24.0f;
+        const int rows = juce::jlimit(6, 48, (int)std::round(24.0f / pianoZoom));
+    const float rowHeight = roll.getHeight() / (float)rows;
         const int midi = pianoTopMidi() -
             (int)std::floor((event.position.y - roll.getY()) / rowHeight);
         const double startTime = visibleStart +
@@ -1055,11 +1057,12 @@ void NocturneAudioProcessorEditor::mouseDoubleClick(const juce::MouseEvent& even
     const auto roll = pianoBounds();
     double totalTime = 8.0;
     for (const auto& n : processor.getNotesCopy()) totalTime = juce::jmax(totalTime, n.start + n.length);
-    const double visibleStart = juce::jmax(0.0, totalTime - 8.0) * pianoScrollX.getValue();
+    const double visibleDuration = 8.0 / (double)pianoZoom;
+    const double visibleStart = juce::jmax(0.0, totalTime - visibleDuration) * pianoScrollX.getValue();
     const double startTime = juce::jmax(0.0, visibleStart +
-        ((event.position.x - roll.getX() - 8.0) / (roll.getWidth() - 16.0)) * 8.0);
+        ((event.position.x - roll.getX() - 8.0) / (roll.getWidth() - 16.0)) * visibleDuration);
     const int midi = juce::jlimit(0, 127, pianoTopMidi() -
-        (int)std::floor((event.position.y - roll.getY()) / (roll.getHeight() / 24.0f)));
+        (int)std::floor((event.position.y - roll.getY()) / (roll.getHeight() / (float)juce::jlimit(6, 48, (int)std::round(24.0f / pianoZoom)))));
     pushUndoState();
     processor.addNote(midi, startTime, 0.25, 100);
     repaint();
