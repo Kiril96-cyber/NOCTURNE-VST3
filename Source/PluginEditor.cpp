@@ -888,36 +888,65 @@ void NocturneAudioProcessorEditor::resized()
 void NocturneAudioProcessorEditor::mouseDown(const juce::MouseEvent& event)
 {
     draggedNote = -1;
+    velocityNote = -1;
     noteDragMode = NoteDragMode::none;
-    const auto roll = pianoBounds();
-    if (pianoLockButton.isLocked() || !roll.contains(event.position))
-        return;
+    if (pianoLockButton.isLocked()) return;
 
-    const auto noteEvents = processor.getNotesCopy();
+    const auto notesNow = processor.getNotesCopy();
+    const auto roll = pianoBounds();
+    const juce::Rectangle<float> velocityBounds(28.0f, 606.0f, 720.0f, 34.0f);
+    double totalTime = 8.0;
+    for (const auto& n : notesNow) totalTime = juce::jmax(totalTime, n.start + n.length);
+    const double visibleDuration = 8.0;
+    const double visibleStart = juce::jmax(0.0, totalTime - visibleDuration) * pianoScrollX.getValue();
     const float rowHeight = roll.getHeight() / 24.0f;
     const int topMidi = pianoTopMidi();
-    double totalTime = 8.0;
-    for (const auto& note : noteEvents)
-        totalTime = juce::jmax(totalTime, note.start + note.length);
-    if (processor.recording.load())
-        totalTime = juce::jmax(totalTime, processor.recordingPositionSeconds.load() + 0.25);
 
-    const double visibleDuration = 8.0;
-    const double maxScrollStart = juce::jmax(0.0, totalTime - visibleDuration);
-    const double visibleStart = maxScrollStart * pianoScrollX.getValue();
-
-    for (int i = noteEvents.size() - 1; i >= 0; --i)
+    if (velocityBounds.contains(event.position))
     {
-        const auto& note = noteEvents.getReference(i);
+        int nearest = -1;
+        float nearestDistance = 8.0f;
+        for (int i = 0; i < notesNow.size(); ++i)
+        {
+            const float nx = roll.getX() + 8.0f +
+                (float)((notesNow.getReference(i).start - visibleStart) / visibleDuration) * (roll.getWidth() - 16.0f);
+            const float distance = std::abs(event.position.x - nx);
+            if (distance < nearestDistance) { nearest = i; nearestDistance = distance; }
+        }
+        if (nearest >= 0)
+        {
+            pushUndoState();
+            velocityNote = nearest;
+            noteDragMode = NoteDragMode::velocity;
+            const int value = juce::jlimit(1, 127,
+                (int)std::round((636.0f - event.position.y) / 20.0f * 127.0f));
+            processor.setNoteVelocity(nearest, value);
+            repaint();
+        }
+        return;
+    }
+
+    if (!roll.contains(event.position)) return;
+
+    for (int i = notesNow.size() - 1; i >= 0; --i)
+    {
+        const auto& note = notesNow.getReference(i);
         const float x = roll.getX() + 8.0f +
             (float)((note.start - visibleStart) / visibleDuration) * (roll.getWidth() - 16.0f);
         const float width = juce::jmax(8.0f,
             (float)(note.length / visibleDuration) * (roll.getWidth() - 16.0f));
         const float y = roll.getY() + ((float)(topMidi - note.midi) + 0.5f) * rowHeight;
-
         if (event.position.x >= x && event.position.x <= x + width &&
             std::abs(event.position.y - y) < rowHeight * 0.7f)
         {
+            if (event.mods.isRightButtonDown())
+            {
+                pushUndoState();
+                processor.removeNote(i);
+                repaint();
+                return;
+            }
+            pushUndoState();
             draggedNote = i;
             originalNoteLength = note.length;
             if (event.position.x >= x + width - 7.0f)
@@ -925,8 +954,7 @@ void NocturneAudioProcessorEditor::mouseDown(const juce::MouseEvent& event)
             else
             {
                 noteDragMode = NoteDragMode::move;
-                dragOffsetSeconds = (event.position.x - x) / (roll.getWidth() - 16.0f) *
-                                    visibleDuration;
+                dragOffsetSeconds = (event.position.x - x) / (roll.getWidth() - 16.0f) * visibleDuration;
             }
             return;
         }
@@ -935,23 +963,24 @@ void NocturneAudioProcessorEditor::mouseDown(const juce::MouseEvent& event)
 
 void NocturneAudioProcessorEditor::mouseDrag(const juce::MouseEvent& event)
 {
-    if (pianoLockButton.isLocked() || draggedNote < 0 || noteDragMode == NoteDragMode::none)
+    if (pianoLockButton.isLocked()) return;
+    if (noteDragMode == NoteDragMode::velocity && velocityNote >= 0)
+    {
+        const int value = juce::jlimit(1, 127,
+            (int)std::round((636.0f - event.position.y) / 20.0f * 127.0f));
+        processor.setNoteVelocity(velocityNote, value);
+        repaint();
         return;
+    }
+    if (draggedNote < 0 || noteDragMode == NoteDragMode::none) return;
 
     const auto roll = pianoBounds();
     const auto noteEvents = processor.getNotesCopy();
-    if (!juce::isPositiveAndBelow(draggedNote, noteEvents.size()))
-        return;
-
+    if (!juce::isPositiveAndBelow(draggedNote, noteEvents.size())) return;
     double totalTime = 8.0;
-    for (const auto& note : noteEvents)
-        totalTime = juce::jmax(totalTime, note.start + note.length);
-    if (processor.recording.load())
-        totalTime = juce::jmax(totalTime, processor.recordingPositionSeconds.load() + 0.25);
-
+    for (const auto& n : noteEvents) totalTime = juce::jmax(totalTime, n.start + n.length);
     const double visibleDuration = 8.0;
-    const double maxScrollStart = juce::jmax(0.0, totalTime - visibleDuration);
-    const double visibleStart = maxScrollStart * pianoScrollX.getValue();
+    const double visibleStart = juce::jmax(0.0, totalTime - visibleDuration) * pianoScrollX.getValue();
     const double secondsPerPixel = visibleDuration / (double)(roll.getWidth() - 16.0);
 
     if (noteDragMode == NoteDragMode::resize)
@@ -963,12 +992,75 @@ void NocturneAudioProcessorEditor::mouseDrag(const juce::MouseEvent& event)
     else
     {
         const float rowHeight = roll.getHeight() / 24.0f;
-        const int topMidi = pianoTopMidi();
-        const int midi = topMidi - (int)std::floor((event.position.y - roll.getY()) / rowHeight);
-        const double start = visibleStart +
+        const int midi = pianoTopMidi() -
+            (int)std::floor((event.position.y - roll.getY()) / rowHeight);
+        const double startTime = visibleStart +
             ((event.position.x - roll.getX() - 8.0) / (roll.getWidth() - 16.0)) *
             visibleDuration - dragOffsetSeconds;
-        processor.moveNote(draggedNote, midi, start);
+        processor.moveNote(draggedNote, midi, startTime);
     }
     repaint();
+}
+
+void NocturneAudioProcessorEditor::mouseUp(const juce::MouseEvent&)
+{
+    draggedNote = -1;
+    velocityNote = -1;
+    noteDragMode = NoteDragMode::none;
+}
+
+void NocturneAudioProcessorEditor::mouseDoubleClick(const juce::MouseEvent& event)
+{
+    if (pianoLockButton.isLocked() || !pianoBounds().contains(event.position)) return;
+    const auto roll = pianoBounds();
+    double totalTime = 8.0;
+    for (const auto& n : processor.getNotesCopy()) totalTime = juce::jmax(totalTime, n.start + n.length);
+    const double visibleStart = juce::jmax(0.0, totalTime - 8.0) * pianoScrollX.getValue();
+    const double startTime = juce::jmax(0.0, visibleStart +
+        ((event.position.x - roll.getX() - 8.0) / (roll.getWidth() - 16.0)) * 8.0);
+    const int midi = juce::jlimit(0, 127, pianoTopMidi() -
+        (int)std::floor((event.position.y - roll.getY()) / (roll.getHeight() / 24.0f)));
+    pushUndoState();
+    processor.addNote(midi, startTime, 0.25, 100);
+    repaint();
+}
+
+void NocturneAudioProcessorEditor::pushUndoState()
+{
+    undoHistory.push_back(processor.getNotesCopy());
+    if ((int)undoHistory.size() > maxUndoStates) undoHistory.erase(undoHistory.begin());
+    redoHistory.clear();
+}
+
+void NocturneAudioProcessorEditor::undoEdit()
+{
+    if (undoHistory.empty()) return;
+    redoHistory.push_back(processor.getNotesCopy());
+    processor.replaceNotes(undoHistory.back());
+    undoHistory.pop_back();
+    repaint();
+}
+
+void NocturneAudioProcessorEditor::redoEdit()
+{
+    if (redoHistory.empty()) return;
+    undoHistory.push_back(processor.getNotesCopy());
+    processor.replaceNotes(redoHistory.back());
+    redoHistory.pop_back();
+    repaint();
+}
+
+bool NocturneAudioProcessorEditor::keyPressed(const juce::KeyPress& key)
+{
+    if (key.getModifiers().isCommandDown() && key.getKeyCode() == 'Z')
+    {
+        if (key.getModifiers().isShiftDown()) redoEdit(); else undoEdit();
+        return true;
+    }
+    if (key.getModifiers().isCommandDown() && key.getKeyCode() == 'Y')
+    {
+        redoEdit();
+        return true;
+    }
+    return false;
 }
