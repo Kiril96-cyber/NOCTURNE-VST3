@@ -271,6 +271,8 @@ NocturneAudioProcessorEditor::NocturneAudioProcessorEditor(NocturneAudioProcesso
     setupButton(clearButton);
     setupButton(undoButton);
     setupButton(redoButton);
+    undoButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff26212f).withAlpha(0.72f));
+    redoButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff26212f).withAlpha(0.72f));
     undoButton.onClick = [this] { undoEdit(); };
     redoButton.onClick = [this] { redoEdit(); };
     setWantsKeyboardFocus(true);
@@ -813,6 +815,7 @@ void NocturneAudioProcessorEditor::paint(juce::Graphics& g)
 
     // Editable velocity lane is clipped to the inner frame so bars cannot spill outside.
     const juce::Rectangle<float> velocityBounds(30.0f, 586.0f, 716.0f, 34.0f);
+    {
     juce::Graphics::ScopedSaveState velocityClip(g);
     g.reduceClipRegion(velocityBounds.toNearestInt());
     g.setColour(panel.withAlpha(0.92f));
@@ -829,6 +832,7 @@ void NocturneAudioProcessorEditor::paint(juce::Graphics& g)
         const float barHeight = 20.0f * (float)juce::jlimit(1, 127, note.velocity) / 127.0f;
         g.setColour(juce::Colour(0xff9c79e8).withAlpha(0.92f));
         g.fillRoundedRectangle(vx - 1.5f, 616.0f - barHeight, 3.0f, barHeight, 1.2f);
+    }
     }
 
     if (isRecording)
