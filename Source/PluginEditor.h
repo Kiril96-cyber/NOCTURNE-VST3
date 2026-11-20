@@ -175,6 +175,12 @@ public:
     void resized() override;
     void mouseDown(const juce::MouseEvent&) override;
     void mouseDrag(const juce::MouseEvent&) override;
+    void mouseUp(const juce::MouseEvent&) override;
+    void mouseDoubleClick(const juce::MouseEvent&) override;
+    bool keyPressed(const juce::KeyPress&) override;
+    void undoEdit();
+    void redoEdit();
+    void pushUndoState();
 
 private:
     void timerCallback() override;
@@ -190,6 +196,8 @@ private:
     juce::TextButton recordButton { "RECORD" };
     juce::TextButton exportButton { "EXPORT MIDI" };
     juce::TextButton clearButton { "CLEAR" };
+    juce::TextButton undoButton { "UNDO" };
+    juce::TextButton redoButton { "REDO" };
     NocturneMidiDragButton dragMidiButton;
     NocturnePianoLockButton pianoLockButton;
 
@@ -209,6 +217,9 @@ private:
     NoteDragMode noteDragMode = NoteDragMode::none;
     double dragOffsetSeconds = 0.0;
     double originalNoteLength = 0.1;
+    int velocityNote = -1;
+    std::vector<juce::Array<NocturneAudioProcessor::NoteEvent>> undoHistory, redoHistory;
+    static constexpr int maxUndoStates = 64;
     float neonPhase = 0.0f;
 
     std::unique_ptr<juce::FileChooser> midiSaveChooser;
