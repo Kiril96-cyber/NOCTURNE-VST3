@@ -909,10 +909,10 @@ void NocturneAudioProcessorEditor::mouseDown(const juce::MouseEvent& event)
 
     const auto notesNow = processor.getNotesCopy();
     const auto roll = pianoBounds();
-    const juce::Rectangle<float> velocityBounds(28.0f, 606.0f, 720.0f, 34.0f);
+    const juce::Rectangle<float> velocityBounds(30.0f, 586.0f, 716.0f, 34.0f);
     double totalTime = 8.0;
     for (const auto& n : notesNow) totalTime = juce::jmax(totalTime, n.start + n.length);
-    const double visibleDuration = 8.0;
+    const double visibleDuration = 8.0 / (double)pianoZoom;
     const double visibleStart = juce::jmax(0.0, totalTime - visibleDuration) * pianoScrollX.getValue();
     const int rows = juce::jlimit(6, 48, (int)std::round(24.0f / pianoZoom));
     const float rowHeight = roll.getHeight() / (float)rows;
@@ -935,7 +935,7 @@ void NocturneAudioProcessorEditor::mouseDown(const juce::MouseEvent& event)
             velocityNote = nearest;
             noteDragMode = NoteDragMode::velocity;
             const int value = juce::jlimit(1, 127,
-                (int)std::round((636.0f - event.position.y) / 20.0f * 127.0f));
+                (int)std::round((616.0f - event.position.y) / 20.0f * 127.0f));
             processor.setNoteVelocity(nearest, value);
             repaint();
         }
@@ -1061,8 +1061,9 @@ void NocturneAudioProcessorEditor::mouseDoubleClick(const juce::MouseEvent& even
     const double visibleStart = juce::jmax(0.0, totalTime - visibleDuration) * pianoScrollX.getValue();
     const double startTime = juce::jmax(0.0, visibleStart +
         ((event.position.x - roll.getX() - 8.0) / (roll.getWidth() - 16.0)) * visibleDuration);
+    const int visibleRows = juce::jlimit(6, 48, (int)std::round(24.0f / pianoZoom));
     const int midi = juce::jlimit(0, 127, pianoTopMidi() -
-        (int)std::floor((event.position.y - roll.getY()) / (roll.getHeight() / (float)juce::jlimit(6, 48, (int)std::round(24.0f / pianoZoom)))));
+        (int)std::floor((event.position.y - roll.getY()) / (roll.getHeight() / (float)visibleRows)));
     pushUndoState();
     processor.addNote(midi, startTime, 0.25, 100);
     repaint();
