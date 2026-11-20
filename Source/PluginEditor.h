@@ -176,6 +176,7 @@ public:
     void mouseDown(const juce::MouseEvent&) override;
     void mouseDrag(const juce::MouseEvent&) override;
     void mouseUp(const juce::MouseEvent&) override;
+    void mouseWheelMove(const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
     void mouseDoubleClick(const juce::MouseEvent&) override;
     bool keyPressed(const juce::KeyPress&) override;
     void undoEdit();
@@ -221,6 +222,11 @@ private:
     std::vector<juce::Array<NocturneAudioProcessor::NoteEvent>> undoHistory, redoHistory;
     static constexpr int maxUndoStates = 64;
     float neonPhase = 0.0f;
+    float pianoZoom = 1.0f;
+    bool middlePanning = false;
+    juce::Point<float> panStartPoint;
+    double panStartX = 0.0;
+    double panStartY = 84.0;
 
     std::unique_ptr<juce::FileChooser> midiSaveChooser;
     std::unique_ptr<juce::FileChooser> audioFileChooser;
