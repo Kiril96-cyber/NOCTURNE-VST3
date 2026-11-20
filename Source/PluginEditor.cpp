@@ -752,7 +752,7 @@ void NocturneAudioProcessorEditor::paint(juce::Graphics& g)
         g.setColour(juce::Colour(0xffb68aff).withAlpha((0.12f + settingsHint * 0.42f) * settingsReveal));
         g.fillRoundedRectangle(drawerX - 3.0f, 104.0f, 7.0f, 548.0f, 3.0f);
         g.setColour(text.withAlpha(settingsReveal));
-        g.setFont(10.5f, juce::Font::bold);
+        g.setFont(juce::Font(10.5f, juce::Font::bold));
         g.drawText("SETTINGS", juce::Rectangle<int>((int)drawerX + 18, 91, 190, 20), juce::Justification::left);
     }
 
