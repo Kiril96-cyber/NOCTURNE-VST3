@@ -189,6 +189,8 @@ private:
     void loadWaveform(const juce::File&);
     void saveMidi();
     void applyPreset(int presetIndex);
+    bool isPitchInSelectedScale(int midi) const;
+    int snapMidiToSelectedScale(int midi) const;
     juce::Rectangle<float> pianoBounds() const;
     int pianoTopMidi() const;
 
@@ -203,6 +205,9 @@ private:
     NocturnePianoLockButton pianoLockButton;
 
     juce::ComboBox presetSelector;
+    juce::ComboBox keySelector, scaleSelector;
+    juce::Label keyLabel, scaleLabel;
+    juce::ToggleButton scaleSnapButton { "SNAP" };
     juce::Label presetLabel;
     juce::Slider pianoScrollX, pianoScrollY;
     juce::Label pianoScrollXLabel, pianoScrollYLabel;
