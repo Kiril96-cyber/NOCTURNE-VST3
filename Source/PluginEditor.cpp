@@ -601,7 +601,7 @@ void NocturneAudioProcessorEditor::timerCallback()
 
 juce::Rectangle<float> NocturneAudioProcessorEditor::pianoBounds() const
 {
-    return { 30.0f, 312.0f, 716.0f, 270.0f };
+    return { 30.0f, 312.0f, 680.0f, 270.0f };
 }
 
 int NocturneAudioProcessorEditor::pianoTopMidi() const
@@ -814,7 +814,7 @@ void NocturneAudioProcessorEditor::paint(juce::Graphics& g)
 
 
     // Editable velocity lane is clipped to the inner frame so bars cannot spill outside.
-    const juce::Rectangle<float> velocityBounds(30.0f, 586.0f, 716.0f, 34.0f);
+    const juce::Rectangle<float> velocityBounds(30.0f, 586.0f, 680.0f, 34.0f);
     {
     juce::Graphics::ScopedSaveState velocityClip(g);
     g.reduceClipRegion(velocityBounds.toNearestInt());
@@ -848,7 +848,7 @@ void NocturneAudioProcessorEditor::paint(juce::Graphics& g)
     g.drawText("NOTES  " + juce::String(noteEvents.size()) +
                "     " + detectedKeyText(processor) +
                "     BPM " + juce::String(processor.bpm.load(), 1),
-               42, 642, 690, 13, juce::Justification::left);
+               42, 662, 640, 11, juce::Justification::left);
 
     g.setColour(line);
     g.drawLine(28, 676, (float)getWidth() - 28, 676, 1.0f);
@@ -858,13 +858,13 @@ void NocturneAudioProcessorEditor::resized()
 {
     presetLabel.setBounds(780, 8, 220, 16);
     presetSelector.setBounds(780, 25, 220, 30);
-    undoButton.setBounds(550, 284, 66, 22);
-    redoButton.setBounds(620, 284, 66, 22);
-    pianoLockButton.setBounds(692, 283, 24, 22);
-    pianoScrollYLabel.setBounds(754, 312, 18, 12);
-    pianoScrollY.setBounds(752, 328, 20, 254);
-    pianoScrollXLabel.setBounds(40, 631, 64, 16);
-    pianoScrollX.setBounds(108, 628, 620, 20);
+    undoButton.setBounds(548, 285, 58, 20);
+    redoButton.setBounds(610, 285, 58, 20);
+    pianoLockButton.setBounds(680, 284, 24, 22);
+    pianoScrollYLabel.setBounds(718, 312, 20, 14);
+    pianoScrollY.setBounds(720, 332, 18, 246);
+    pianoScrollXLabel.setBounds(40, 644, 64, 14);
+    pianoScrollX.setBounds(108, 642, 582, 18);
 
     importButton.setBounds(28, 690, 140, 36);
     recordButton.setBounds(177, 690, 120, 36);
@@ -1008,7 +1008,7 @@ void NocturneAudioProcessorEditor::mouseDrag(const juce::MouseEvent& event)
     if (!juce::isPositiveAndBelow(draggedNote, noteEvents.size())) return;
     double totalTime = 8.0;
     for (const auto& n : noteEvents) totalTime = juce::jmax(totalTime, n.start + n.length);
-    const double visibleDuration = 8.0;
+    const double visibleDuration = 8.0 / (double)pianoZoom;
     const double visibleStart = juce::jmax(0.0, totalTime - visibleDuration) * pianoScrollX.getValue();
     const double secondsPerPixel = visibleDuration / (double)(roll.getWidth() - 16.0);
 
@@ -1042,17 +1042,51 @@ void NocturneAudioProcessorEditor::mouseUp(const juce::MouseEvent&)
 
 void NocturneAudioProcessorEditor::mouseWheelMove(const juce::MouseEvent& event, const juce::MouseWheelDetails& wheel)
 {
-    if (!pianoBounds().contains(event.position) && !juce::Rectangle<float>(30.0f, 586.0f, 716.0f, 34.0f).contains(event.position))
+    const auto roll = pianoBounds();
+    const auto velocity = juce::Rectangle<float>(30.0f, 586.0f, 680.0f, 34.0f);
+    if (!roll.contains(event.position) && !velocity.contains(event.position))
         return;
+
+    // Wheel zoom is a navigation gesture and deliberately ignores the edit lock.
     const float oldZoom = pianoZoom;
     const float direction = wheel.deltaY > 0.0f ? 1.0f : -1.0f;
-    pianoZoom = juce::jlimit(0.5f, 4.0f, pianoZoom * std::pow(1.18f, direction));
-    if (std::abs(pianoZoom - oldZoom) > 0.0001f)
-    {
-        const int rows = juce::jlimit(6, 48, (int)std::round(24.0f / pianoZoom));
-        pianoScrollY.setValue(juce::jlimit((double)rows, 127.0, pianoScrollY.getValue()), juce::dontSendNotification);
-        repaint();
-    }
+    const float newZoom = juce::jlimit(0.5f, 4.0f, oldZoom * std::pow(1.18f, direction));
+    if (std::abs(newZoom - oldZoom) < 0.0001f)
+        return;
+
+    const auto notes = processor.getNotesCopy();
+    double totalTime = 8.0;
+    for (const auto& note : notes)
+        totalTime = juce::jmax(totalTime, note.start + note.length);
+
+    // Keep the time under the pointer stationary while zooming horizontally.
+    const double oldDuration = 8.0 / (double)oldZoom;
+    const double xRatio = juce::jlimit(0.0, 1.0,
+        (double)(event.position.x - roll.getX() - 8.0f) / (double)(roll.getWidth() - 16.0f));
+    const double oldMaxStart = juce::jmax(0.0, totalTime - oldDuration);
+    const double anchorTime = oldMaxStart * pianoScrollX.getValue() + xRatio * oldDuration;
+
+    // Keep the pitch under the pointer stationary as the visible pitch range changes.
+    const int oldRows = juce::jlimit(6, 48, (int)std::round(24.0f / oldZoom));
+    const int oldTop = pianoTopMidi();
+    const float oldRowHeight = roll.getHeight() / (float)oldRows;
+    const int pitchAtPointer = oldTop - (int)std::floor((event.position.y - roll.getY()) / oldRowHeight);
+
+    pianoZoom = newZoom;
+    const double newDuration = 8.0 / (double)pianoZoom;
+    const double newMaxStart = juce::jmax(0.0, totalTime - newDuration);
+    const double newStart = anchorTime - xRatio * newDuration;
+    pianoScrollX.setValue(newMaxStart > 0.0
+        ? juce::jlimit(0.0, 1.0, newStart / newMaxStart) : 0.0,
+        juce::dontSendNotification);
+
+    const int newRows = juce::jlimit(6, 48, (int)std::round(24.0f / pianoZoom));
+    const float newRowHeight = roll.getHeight() / (float)newRows;
+    const int newTop = pitchAtPointer +
+        (int)std::floor((event.position.y - roll.getY()) / newRowHeight);
+    pianoScrollY.setValue(juce::jlimit((double)newRows, 127.0, (double)newTop),
+                          juce::dontSendNotification);
+    repaint();
 }
 
 void NocturneAudioProcessorEditor::mouseDoubleClick(const juce::MouseEvent& event)
