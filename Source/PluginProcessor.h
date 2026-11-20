@@ -48,6 +48,9 @@ public:
     void moveNote(int index, int midi, double start);
     void setNoteLength(int index, double length);
     void setNoteVelocity(int index, int velocity);
+    void addNote(int midi, double start, double length = 0.25, int velocity = 100);
+    void removeNote(int index);
+    void replaceNotes(const juce::Array<NoteEvent>& replacement);
     void setRecording(bool shouldRecord);
     std::array<float, 256> getLiveWaveformSnapshot() const;
 
