@@ -763,23 +763,25 @@ void NocturneAudioProcessorEditor::paint(juce::Graphics& g)
     g.setColour(juce::Colour(0xffb68aff).withAlpha(0.10f + settingsHint * 0.22f));
     g.fillRoundedRectangle((float)getWidth() - 7.0f, 112.0f, 6.0f, 500.0f, 3.0f);
 
-    const auto& backgroundImage = juce::ImageCache::getFromMemory(
-        BinaryData::nocturne_background_jpg, BinaryData::nocturne_background_jpgSize);
-    if (backgroundImage.isValid())
+    if (settingsReveal > 0.02f)
     {
-        // Keep the original artwork proportions and use it as a subtle side-panel
-        // atmosphere layer rather than stretching it over the whole plugin.
-        const juce::Rectangle<int> artBounds(764, 92, 252, 576);
-        g.setColour(bg.withAlpha(0.35f));
-        g.fillRoundedRectangle(artBounds.toFloat(), 12.0f);
-        g.setOpacity(0.22f);
-        g.drawImageWithin(backgroundImage,
-                          artBounds.getX(), artBounds.getY(),
-                          artBounds.getWidth(), artBounds.getHeight(),
-                          juce::RectanglePlacement::centred);
-        g.setOpacity(1.0f);
-        g.setColour(bg.withAlpha(0.10f));
-        g.fillRoundedRectangle(artBounds.toFloat(), 12.0f);
+        const auto& backgroundImage = juce::ImageCache::getFromMemory(
+            BinaryData::nocturne_background_jpg, BinaryData::nocturne_background_jpgSize);
+        if (backgroundImage.isValid())
+        {
+            const int artX = getWidth() - juce::roundToInt(252.0f * settingsReveal);
+            const juce::Rectangle<int> artBounds(artX + 4, 108, 240, 548);
+            g.setColour(bg.withAlpha(0.35f * settingsReveal));
+            g.fillRoundedRectangle(artBounds.toFloat(), 12.0f);
+            g.setOpacity(0.22f * settingsReveal);
+            g.drawImageWithin(backgroundImage,
+                              artBounds.getX(), artBounds.getY(),
+                              artBounds.getWidth(), artBounds.getHeight(),
+                              juce::RectanglePlacement::centred);
+            g.setOpacity(1.0f);
+            g.setColour(bg.withAlpha(0.10f * settingsReveal));
+            g.fillRoundedRectangle(artBounds.toFloat(), 12.0f);
+        }
     }
 
     const juce::Font logoFont(27.0f, juce::Font::bold);
