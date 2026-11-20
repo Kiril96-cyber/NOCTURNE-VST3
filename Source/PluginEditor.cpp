@@ -269,6 +269,11 @@ NocturneAudioProcessorEditor::NocturneAudioProcessorEditor(NocturneAudioProcesso
     setupButton(recordButton);
     setupButton(exportButton);
     setupButton(clearButton);
+    setupButton(undoButton);
+    setupButton(redoButton);
+    undoButton.onClick = [this] { undoEdit(); };
+    redoButton.onClick = [this] { redoEdit(); };
+    setWantsKeyboardFocus(true);
 
     addAndMakeVisible(dragMidiButton);
     dragMidiButton.createMidiFile = [this] { return processor.createTemporaryMidiFile(); };
@@ -800,6 +805,25 @@ void NocturneAudioProcessorEditor::paint(juce::Graphics& g)
         }
     }
 
+
+    // Editable velocity lane aligned with the piano-roll timeline.
+    const juce::Rectangle<float> velocityBounds(28.0f, 606.0f, 720.0f, 34.0f);
+    g.setColour(panel.withAlpha(0.92f));
+    g.fillRoundedRectangle(velocityBounds, 6.0f);
+    g.setColour(muted);
+    g.setFont(9.0f);
+    g.drawText("VELOCITY", 36, 608, 58, 12, juce::Justification::left);
+    for (const auto& note : noteEvents)
+    {
+        if (note.start + note.length < visibleStart || note.start > visibleEnd)
+            continue;
+        const float vx = roll.getX() + 8.0f +
+            (float)((note.start - visibleStart) / visibleDuration) * (roll.getWidth() - 16.0f);
+        const float barHeight = 20.0f * (float)juce::jlimit(1, 127, note.velocity) / 127.0f;
+        g.setColour(juce::Colour(0xff9c79e8).withAlpha(0.92f));
+        g.fillRoundedRectangle(vx - 1.5f, 636.0f - barHeight, 3.0f, barHeight, 1.2f);
+    }
+
     if (isRecording)
     {
         const float cursorX = roll.getX() + 8.0f +
@@ -813,7 +837,7 @@ void NocturneAudioProcessorEditor::paint(juce::Graphics& g)
     g.drawText("NOTES  " + juce::String(noteEvents.size()) +
                "     " + detectedKeyText(processor) +
                "     BPM " + juce::String(processor.bpm.load(), 1),
-               42, 604, 690, 15, juce::Justification::left);
+               42, 642, 690, 13, juce::Justification::left);
 
     g.setColour(line);
     g.drawLine(28, 676, (float)getWidth() - 28, 676, 1.0f);
@@ -824,10 +848,12 @@ void NocturneAudioProcessorEditor::resized()
     presetLabel.setBounds(780, 8, 220, 16);
     presetSelector.setBounds(780, 25, 220, 30);
     pianoLockButton.setBounds(712, 281, 24, 22);
+    undoButton.setBounds(548, 281, 70, 22);
+    redoButton.setBounds(622, 281, 70, 22);
     pianoScrollYLabel.setBounds(754, 284, 18, 12);
     pianoScrollY.setBounds(752, 300, 20, 296);
-    pianoScrollXLabel.setBounds(42, 628, 64, 16);
-    pianoScrollX.setBounds(108, 625, 620, 20);
+    pianoScrollXLabel.setBounds(42, 657, 64, 16);
+    pianoScrollX.setBounds(108, 654, 620, 20);
 
     importButton.setBounds(28, 690, 140, 36);
     recordButton.setBounds(177, 690, 120, 36);
