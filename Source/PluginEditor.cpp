@@ -266,6 +266,7 @@ NocturneAudioProcessorEditor::NocturneAudioProcessorEditor(NocturneAudioProcesso
     scaleSelector.addItem("Mixolydian", 11);
     scaleSelector.addItem("Locrian", 12);
     scaleSelector.addItem("Chromatic", 13);
+    scaleSelector.setSelectedId(1, juce::dontSendNotification);
     for (auto* combo : { &keySelector, &scaleSelector })
     {
         addAndMakeVisible(*combo);
@@ -961,11 +962,11 @@ void NocturneAudioProcessorEditor::resized()
     presetSelector.setBounds(780, 25, 220, 30);
     undoButton.setBounds(548, 285, 58, 20);
     redoButton.setBounds(610, 285, 58, 20);
-    keyLabel.setBounds(155, 286, 28, 12);
-    keySelector.setBounds(155, 298, 66, 23);
-    scaleLabel.setBounds(228, 286, 42, 12);
-    scaleSelector.setBounds(228, 298, 142, 23);
-    scaleSnapButton.setBounds(376, 299, 62, 22);
+    keyLabel.setBounds(155, 282, 28, 11);
+    keySelector.setBounds(155, 294, 66, 18);
+    scaleLabel.setBounds(228, 282, 42, 11);
+    scaleSelector.setBounds(228, 294, 142, 18);
+    scaleSnapButton.setBounds(376, 293, 62, 19);
     pianoLockButton.setBounds(680, 284, 24, 22);
     pianoScrollYLabel.setBounds(718, 312, 20, 14);
     pianoScrollY.setBounds(720, 332, 18, 246);
