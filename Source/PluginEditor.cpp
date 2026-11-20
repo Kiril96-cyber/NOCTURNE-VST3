@@ -905,6 +905,7 @@ void NocturneAudioProcessorEditor::paint(juce::Graphics& g)
 
     const int rows = juce::jlimit(6, 48, (int)std::round(24.0f / pianoZoom));
     const float rowHeight = roll.getHeight() / (float)rows;
+    const int topMidi = pianoTopMidi();
     const int selectedRoot = juce::jlimit(0, 11, keySelector.getSelectedId() - 1);
     const auto selectedScale = scaleSemitones(scaleSelector.getSelectedId());
     for (int row = 0; row < rows; ++row)
@@ -947,7 +948,6 @@ void NocturneAudioProcessorEditor::paint(juce::Graphics& g)
     const double maxScrollStart = juce::jmax(0.0, totalTime - visibleDuration);
     const double visibleStart = maxScrollStart * pianoScrollX.getValue();
     const double visibleEnd = visibleStart + visibleDuration;
-    const int topMidi = pianoTopMidi();
 
     for (const auto& note : noteEvents)
     {
