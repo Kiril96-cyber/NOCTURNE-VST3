@@ -46,6 +46,8 @@ public:
     bool copyMidiToClipboard(void* clipboardOwnerWindow);
     juce::File createTemporaryMidiFile();
     void moveNote(int index, int midi, double start);
+    void setNoteLength(int index, double length);
+    void setNoteVelocity(int index, int velocity);
     void setRecording(bool shouldRecord);
     std::array<float, 256> getLiveWaveformSnapshot() const;
 
