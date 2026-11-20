@@ -182,6 +182,7 @@ static juce::Array<int> scaleSemitones(int scaleId)
 {
     switch (scaleId)
     {
+        case 1:  return { 0, 2, 4, 5, 7, 9, 11 };      // Major
         case 2:  return { 0, 2, 3, 5, 7, 8, 10 };       // Natural minor
         case 3:  return { 0, 2, 3, 5, 7, 8, 11 };       // Harmonic minor
         case 4:  return { 0, 2, 3, 5, 7, 9, 11 };       // Melodic minor
@@ -193,7 +194,7 @@ static juce::Array<int> scaleSemitones(int scaleId)
         case 10: return { 0, 2, 4, 6, 7, 9, 11 };      // Lydian
         case 11: return { 0, 2, 4, 5, 7, 9, 10 };      // Mixolydian
         case 12: return { 0, 1, 3, 5, 6, 8, 10 };      // Locrian
-        case 1:  return { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11 }; // Chromatic
+        case 13: return { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11 }; // Chromatic
         default: return { 0, 2, 4, 5, 7, 9, 11 };      // Major
     }
 }
@@ -220,6 +221,7 @@ NocturneAudioProcessorEditor::NocturneAudioProcessorEditor(NocturneAudioProcesso
 
     addAndMakeVisible(presetLabel);
     presetLabel.setText("PRESET", juce::dontSendNotification);
+    presetLabel.setJustificationType(juce::Justification::centred);
     presetLabel.setColour(juce::Label::textColourId, muted);
     presetSelector.addItem("VOCAL  /  NATURAL", 1);
     presetSelector.addItem("VOCAL  /  SOFT", 2);
@@ -232,13 +234,41 @@ NocturneAudioProcessorEditor::NocturneAudioProcessorEditor(NocturneAudioProcesso
     presetSelector.addItem("E-PIANO  /  POLYPHONIC", 9);
     presetSelector.addItem("STRINGS  /  PAD", 10);
     presetSelector.setSelectedId(1, juce::dontSendNotification);
+    presetSelector.setJustificationType(juce::Justification::centred);
     presetSelector.setColour(juce::ComboBox::backgroundColourId, panel);
     presetSelector.setColour(juce::ComboBox::textColourId, text);
     presetSelector.onChange = [this]
     {
         applyPreset(presetSelector.getSelectedId() - 1);
+        settingsHint = 1.0f;
+        settingsOpen = true;
     };
     addAndMakeVisible(presetSelector);
+
+    auto setupPresetArrow = [&](juce::TextButton& button, const juce::String& glyph)
+    {
+        button.setButtonText(glyph);
+        button.setColour(juce::TextButton::buttonColourId, panel);
+        button.setColour(juce::TextButton::buttonOnColourId, violet.withAlpha(0.35f));
+        button.setColour(juce::TextButton::textColourOffId, juce::Colour(0xffd9caff));
+        button.setColour(juce::TextButton::textColourOnId, text);
+        button.setTooltip(glyph == juce::String("‹") ? "Previous preset" : "Next preset");
+        addAndMakeVisible(button);
+    };
+    setupPresetArrow(previousPresetButton, "‹");
+    setupPresetArrow(nextPresetButton, "›");
+    previousPresetButton.onClick = [this]
+    {
+        const int next = presetSelector.getSelectedId() <= 1 ? presetSelector.getNumItems()
+                                                              : presetSelector.getSelectedId() - 1;
+        presetSelector.setSelectedId(next, juce::sendNotification);
+    };
+    nextPresetButton.onClick = [this]
+    {
+        const int next = presetSelector.getSelectedId() >= presetSelector.getNumItems() ? 1
+                                                                                         : presetSelector.getSelectedId() + 1;
+        presetSelector.setSelectedId(next, juce::sendNotification);
+    };
 
     // Musical key and scale controls for Piano Roll guidance and optional note snapping.
     keyLabel.setText("KEY", juce::dontSendNotification);
@@ -648,6 +678,17 @@ void NocturneAudioProcessorEditor::timerCallback()
     const bool isRecording = processor.recording.load();
     const float level = processor.inputLevel.load();
     neonPhase += 0.075f;
+
+    // Reveal the settings drawer when the pointer reaches the right edge or enters it.
+    const auto pointer = getMouseXYRelative();
+    settingsOpen = pointer.x >= getWidth() - 22 ||
+                   (settingsReveal > 0.02f && pointer.x >= getWidth() - 278);
+    const float targetReveal = settingsOpen ? 1.0f : 0.0f;
+    settingsReveal += (targetReveal - settingsReveal) * 0.24f;
+    if (std::abs(settingsReveal - targetReveal) < 0.008f)
+        settingsReveal = targetReveal;
+    settingsHint = juce::jmax(0.0f, settingsHint - 0.018f);
+    resized();
     if (neonPhase > juce::MathConstants<float>::twoPi)
         neonPhase -= juce::MathConstants<float>::twoPi;
 
@@ -697,6 +738,30 @@ int NocturneAudioProcessorEditor::pianoTopMidi() const
 void NocturneAudioProcessorEditor::paint(juce::Graphics& g)
 {
     g.fillAll(bg);
+
+    const float drawerX = (float)getWidth() - 260.0f * settingsReveal;
+    const juce::Rectangle<float> drawerBounds(drawerX, 88.0f, 248.0f, 584.0f);
+    if (settingsReveal > 0.001f)
+    {
+        g.setColour(juce::Colour(0xff17151f).withAlpha(0.97f * settingsReveal));
+        g.fillRoundedRectangle(drawerBounds, 12.0f);
+        g.setColour(violet.withAlpha(0.35f * settingsReveal));
+        g.drawRoundedRectangle(drawerBounds, 12.0f, 1.0f);
+        g.setColour(juce::Colour(0xffb68aff).withAlpha((0.25f + settingsHint * 0.65f) * settingsReveal));
+        g.fillRoundedRectangle(drawerX + 1.0f, 104.0f, 3.0f, 548.0f, 1.5f);
+        g.setColour(juce::Colour(0xffb68aff).withAlpha((0.12f + settingsHint * 0.42f) * settingsReveal));
+        g.fillRoundedRectangle(drawerX - 3.0f, 104.0f, 7.0f, 548.0f, 3.0f);
+        g.setColour(text.withAlpha(settingsReveal));
+        g.setFont(10.5f, juce::Font::bold);
+        g.drawText("SETTINGS", juce::Rectangle<int>((int)drawerX + 18, 91, 190, 20), juce::Justification::left);
+    }
+
+    // Persistent neon edge cue marks the hidden settings drawer.
+    const float edgePulse = 0.5f + 0.5f * std::sin(neonPhase * 1.4f);
+    g.setColour(juce::Colour(0xffb68aff).withAlpha(0.45f + settingsHint * 0.45f + edgePulse * 0.12f));
+    g.fillRoundedRectangle((float)getWidth() - 3.0f, 112.0f, 2.0f, 500.0f, 1.0f);
+    g.setColour(juce::Colour(0xffb68aff).withAlpha(0.10f + settingsHint * 0.22f));
+    g.fillRoundedRectangle((float)getWidth() - 7.0f, 112.0f, 6.0f, 500.0f, 3.0f);
 
     const auto& backgroundImage = juce::ImageCache::getFromMemory(
         BinaryData::nocturne_background_jpg, BinaryData::nocturne_background_jpgSize);
@@ -958,8 +1023,10 @@ void NocturneAudioProcessorEditor::paint(juce::Graphics& g)
 
 void NocturneAudioProcessorEditor::resized()
 {
-    presetLabel.setBounds(780, 8, 220, 16);
-    presetSelector.setBounds(780, 25, 220, 30);
+    presetLabel.setBounds(300, 5, 420, 16);
+    presetSelector.setBounds(330, 22, 360, 32);
+    previousPresetButton.setBounds(296, 22, 30, 32);
+    nextPresetButton.setBounds(694, 22, 30, 32);
     undoButton.setBounds(548, 285, 58, 20);
     redoButton.setBounds(610, 285, 58, 20);
     keyLabel.setBounds(155, 282, 28, 11);
@@ -979,26 +1046,27 @@ void NocturneAudioProcessorEditor::resized()
     dragMidiButton.setBounds(445, 688, 205, 40);
     clearButton.setBounds(660, 690, 90, 36);
 
-    speedLabel.setBounds(780, 102, 220, 18);
-    speed.setBounds(780, 121, 220, 26);
-    accuracyLabel.setBounds(780, 158, 220, 18);
-    accuracy.setBounds(780, 177, 220, 26);
-    glideLabel.setBounds(780, 214, 220, 18);
-    glide.setBounds(780, 233, 220, 26);
-    vibratoLabel.setBounds(780, 270, 220, 18);
-    vibrato.setBounds(780, 289, 220, 26);
-    stabilityLabel.setBounds(780, 330, 220, 18);
-    stability.setBounds(780, 349, 220, 26);
-    tempoLabel.setBounds(780, 388, 220, 18);
-    tempo.setBounds(780, 407, 220, 26);
-    quantizeLabel.setBounds(780, 446, 220, 18);
-    quantize.setBounds(780, 466, 220, 28);
-    chordModeLabel.setBounds(780, 504, 220, 18);
-    chordMode.setBounds(780, 524, 220, 28);
-    analysisModeLabel.setBounds(780, 562, 220, 18);
-    analysisMode.setBounds(780, 582, 220, 28);
-    inputGateLabel.setBounds(780, 620, 220, 18);
-    inputGate.setBounds(780, 639, 220, 26);
+    const int drawerX = getWidth() - juce::roundToInt(260.0f * settingsReveal);
+    speedLabel.setBounds(drawerX + 20, 112, 210, 18);
+    speed.setBounds(drawerX + 20, 131, 210, 26);
+    accuracyLabel.setBounds(drawerX + 20, 168, 210, 18);
+    accuracy.setBounds(drawerX + 20, 187, 210, 26);
+    glideLabel.setBounds(drawerX + 20, 224, 210, 18);
+    glide.setBounds(drawerX + 20, 243, 210, 26);
+    vibratoLabel.setBounds(drawerX + 20, 280, 210, 18);
+    vibrato.setBounds(drawerX + 20, 299, 210, 26);
+    stabilityLabel.setBounds(drawerX + 20, 340, 210, 18);
+    stability.setBounds(drawerX + 20, 359, 210, 26);
+    tempoLabel.setBounds(drawerX + 20, 398, 210, 18);
+    tempo.setBounds(drawerX + 20, 417, 210, 26);
+    quantizeLabel.setBounds(drawerX + 20, 456, 210, 18);
+    quantize.setBounds(drawerX + 20, 476, 210, 28);
+    chordModeLabel.setBounds(drawerX + 20, 514, 210, 18);
+    chordMode.setBounds(drawerX + 20, 534, 210, 28);
+    analysisModeLabel.setBounds(drawerX + 20, 572, 210, 18);
+    analysisMode.setBounds(drawerX + 20, 592, 210, 28);
+    inputGateLabel.setBounds(drawerX + 20, 630, 210, 18);
+    inputGate.setBounds(drawerX + 20, 649, 210, 26);
     pitchLabel.setBounds(390, 112, 340, 36);
     statusLabel.setBounds(770, 696, 245, 24);
 }
