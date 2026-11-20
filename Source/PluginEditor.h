@@ -205,7 +205,10 @@ private:
     std::vector<float> waveform;
     juce::String importedFileName;
     int draggedNote = -1;
+    enum class NoteDragMode { none, move, resize, velocity };
+    NoteDragMode noteDragMode = NoteDragMode::none;
     double dragOffsetSeconds = 0.0;
+    double originalNoteLength = 0.1;
     float neonPhase = 0.0f;
 
     std::unique_ptr<juce::FileChooser> midiSaveChooser;
