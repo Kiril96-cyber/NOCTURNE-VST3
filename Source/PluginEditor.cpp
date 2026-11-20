@@ -862,6 +862,7 @@ void NocturneAudioProcessorEditor::resized()
 void NocturneAudioProcessorEditor::mouseDown(const juce::MouseEvent& event)
 {
     draggedNote = -1;
+    noteDragMode = NoteDragMode::none;
     const auto roll = pianoBounds();
     if (pianoLockButton.isLocked() || !roll.contains(event.position))
         return;
@@ -892,8 +893,15 @@ void NocturneAudioProcessorEditor::mouseDown(const juce::MouseEvent& event)
             std::abs(event.position.y - y) < rowHeight * 0.7f)
         {
             draggedNote = i;
-            dragOffsetSeconds = (event.position.x - x) / (roll.getWidth() - 16.0f) *
-                                visibleDuration;
+            originalNoteLength = note.length;
+            if (event.position.x >= x + width - 7.0f)
+                noteDragMode = NoteDragMode::resize;
+            else
+            {
+                noteDragMode = NoteDragMode::move;
+                dragOffsetSeconds = (event.position.x - x) / (roll.getWidth() - 16.0f) *
+                                    visibleDuration;
+            }
             return;
         }
     }
@@ -901,7 +909,7 @@ void NocturneAudioProcessorEditor::mouseDown(const juce::MouseEvent& event)
 
 void NocturneAudioProcessorEditor::mouseDrag(const juce::MouseEvent& event)
 {
-    if (pianoLockButton.isLocked() || draggedNote < 0)
+    if (pianoLockButton.isLocked() || draggedNote < 0 || noteDragMode == NoteDragMode::none)
         return;
 
     const auto roll = pianoBounds();
@@ -918,14 +926,23 @@ void NocturneAudioProcessorEditor::mouseDrag(const juce::MouseEvent& event)
     const double visibleDuration = 8.0;
     const double maxScrollStart = juce::jmax(0.0, totalTime - visibleDuration);
     const double visibleStart = maxScrollStart * pianoScrollX.getValue();
+    const double secondsPerPixel = visibleDuration / (double)(roll.getWidth() - 16.0);
 
-    const float rowHeight = roll.getHeight() / 24.0f;
-    const int topMidi = pianoTopMidi();
-    const int midi = topMidi - (int)std::floor((event.position.y - roll.getY()) / rowHeight);
-    const double start = visibleStart +
-        ((event.position.x - roll.getX() - 8.0) / (roll.getWidth() - 16.0)) *
-        visibleDuration - dragOffsetSeconds;
-
-    processor.moveNote(draggedNote, midi, start);
+    if (noteDragMode == NoteDragMode::resize)
+    {
+        const double length = originalNoteLength +
+            (double)(event.position.x - event.getMouseDownPosition().x) * secondsPerPixel;
+        processor.setNoteLength(draggedNote, length);
+    }
+    else
+    {
+        const float rowHeight = roll.getHeight() / 24.0f;
+        const int topMidi = pianoTopMidi();
+        const int midi = topMidi - (int)std::floor((event.position.y - roll.getY()) / rowHeight);
+        const double start = visibleStart +
+            ((event.position.x - roll.getX() - 8.0) / (roll.getWidth() - 16.0)) *
+            visibleDuration - dragOffsetSeconds;
+        processor.moveNote(draggedNote, midi, start);
+    }
     repaint();
 }
