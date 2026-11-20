@@ -205,6 +205,10 @@ private:
     NocturnePianoLockButton pianoLockButton;
 
     juce::ComboBox presetSelector;
+    juce::TextButton previousPresetButton, nextPresetButton;
+    bool settingsOpen = false;
+    float settingsReveal = 0.0f;
+    float settingsHint = 0.0f;
     juce::ComboBox keySelector, scaleSelector;
     juce::Label keyLabel, scaleLabel;
     juce::ToggleButton scaleSnapButton { "SNAP" };
