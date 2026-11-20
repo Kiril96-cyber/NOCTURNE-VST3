@@ -1097,6 +1097,20 @@ void NocturneAudioProcessor::moveNote(int index, int midi, double start)
     }
 }
 
+void NocturneAudioProcessor::setNoteLength(int index, double length)
+{
+    juce::ScopedLock lock(notesLock);
+    if (juce::isPositiveAndBelow(index, notes.size()))
+        notes.getReference(index).length = juce::jlimit(0.03, 32.0, length);
+}
+
+void NocturneAudioProcessor::setNoteVelocity(int index, int velocity)
+{
+    juce::ScopedLock lock(notesLock);
+    if (juce::isPositiveAndBelow(index, notes.size()))
+        notes.getReference(index).velocity = juce::jlimit(1, 127, velocity);
+}
+
 juce::File NocturneAudioProcessor::createTemporaryMidiFile()
 {
     const auto directory = juce::File::getSpecialLocation(juce::File::tempDirectory)
