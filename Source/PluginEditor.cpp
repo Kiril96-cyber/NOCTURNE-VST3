@@ -913,7 +913,7 @@ void NocturneAudioProcessorEditor::mouseDown(const juce::MouseEvent& event)
 
     const auto notesNow = processor.getNotesCopy();
     const auto roll = pianoBounds();
-    const juce::Rectangle<float> velocityBounds(30.0f, 586.0f, 716.0f, 34.0f);
+    const juce::Rectangle<float> velocityBounds(30.0f, 586.0f, 680.0f, 34.0f);
     double totalTime = 8.0;
     for (const auto& n : notesNow) totalTime = juce::jmax(totalTime, n.start + n.length);
     const double visibleDuration = 8.0 / (double)pianoZoom;
