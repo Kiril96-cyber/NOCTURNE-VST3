@@ -1058,6 +1058,7 @@ void NocturneAudioProcessorEditor::resized()
     exportButton.setBounds(306, 690, 130, 36);
     dragMidiButton.setBounds(445, 688, 205, 40);
     clearButton.setBounds(660, 690, 90, 36);
+    reanalyzeButton.setBounds(770, 690, 150, 36);
 
     const int drawerX = getWidth() - juce::roundToInt(260.0f * settingsReveal);
     speedLabel.setBounds(drawerX + 20, 112, 210, 18);
@@ -1081,7 +1082,7 @@ void NocturneAudioProcessorEditor::resized()
     inputGateLabel.setBounds(drawerX + 20, 630, 210, 18);
     inputGate.setBounds(drawerX + 20, 649, 210, 26);
     pitchLabel.setBounds(390, 112, 340, 36);
-    statusLabel.setBounds(770, 696, 245, 24);
+    statusLabel.setBounds(770, 716, 245, 18);
 }
 
 void NocturneAudioProcessorEditor::mouseDown(const juce::MouseEvent& event)
