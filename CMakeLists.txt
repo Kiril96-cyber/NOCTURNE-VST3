@@ -28,6 +28,7 @@ juce_generate_juce_header(NOCTURNE)
 # Headless/offline command-line analyzer used by the regression test harness.
 juce_add_console_app(NOCTURNEAnalyzer
     PRODUCT_NAME "NOCTURNE Offline Analyzer")
+target_include_directories(NOCTURNEAnalyzer PRIVATE Source)
 target_sources(NOCTURNEAnalyzer PRIVATE
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
