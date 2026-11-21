@@ -37,6 +37,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout NocturneAudioProcessor::crea
 void NocturneAudioProcessor::prepareToPlay(double sr, int)
 {
     sampleRate = juce::jmax(8000.0, sr);
+    // Preallocate up to three minutes (or 8M samples) so capture never allocates
+    // memory from the real-time audio callback.
+    const int liveCacheCapacity = (int)juce::jmin(8000000.0, sampleRate * 180.0);
+    liveRecordingAudio.setSize(1, liveCacheCapacity);
+    liveRecordingAudio.clear();
+    liveRecordedSamples.store(0);
+    lastAudioIsRecording.store(false);
     analysisBuffer.setSize(1, analysisWindowSize);
     analysisBuffer.clear();
     analysisFrame.setSize(1, analysisWindowSize);
@@ -399,12 +406,17 @@ void NocturneAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     {
         recordingStartTime = elapsedSeconds;
         liveTracker = {};
+        liveRecordedSamples.store(0);
+        lastAudioIsRecording.store(false);
         recordingPositionSeconds.store(0.0);
     }
     else if (!isRecording && wasRecording)
     {
         finishLiveNote(elapsedSeconds - recordingStartTime, 0, midi);
         recordingPositionSeconds.store(juce::jmax(0.0, elapsedSeconds - recordingStartTime));
+        // The latest live take becomes the source for RE-ANALYZE.
+        if (liveRecordedSamples.load() > 0)
+            lastAudioIsRecording.store(true);
     }
     wasRecording = isRecording;
 
@@ -437,6 +449,17 @@ void NocturneAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
             for (int channel = 0; channel < channels; ++channel)
                 monoSample += buffer.getSample(channel, i);
             monoSample /= (float)channels;
+
+            // Cache the exact mono input while recording, using preallocated memory only.
+            if (isRecording)
+            {
+                const int captureIndex = liveRecordedSamples.load();
+                if (juce::isPositiveAndBelow(captureIndex, liveRecordingAudio.getNumSamples()))
+                {
+                    liveRecordingAudio.setSample(0, captureIndex, monoSample);
+                    liveRecordedSamples.store(captureIndex + 1);
+                }
+            }
 
             // Store signed samples in a short rolling buffer for a true live waveform.
             liveWaveformAccumulator += monoSample;
@@ -937,11 +960,25 @@ int NocturneAudioProcessor::analyseFile(const juce::File& file)
 
     lastImportedAudio.makeCopyOf(audio);
     lastImportedSampleRate = reader->sampleRate;
+    lastAudioIsRecording.store(false);
+    liveRecordedSamples.store(0);
     return analyseAudioBuffer(lastImportedAudio, lastImportedSampleRate);
 }
 
 int NocturneAudioProcessor::analyseLastAudio()
 {
+    if (lastAudioIsRecording.load())
+    {
+        const int capturedSamples = liveRecordedSamples.load();
+        if (capturedSamples <= 0 || sampleRate < 8000.0)
+            return 0;
+
+        // This copy runs from the UI thread, not the audio callback.
+        juce::AudioBuffer<float> cachedTake(1, capturedSamples);
+        cachedTake.copyFrom(0, 0, liveRecordingAudio, 0, 0, capturedSamples);
+        return analyseAudioBuffer(cachedTake, sampleRate);
+    }
+
     if (lastImportedAudio.getNumSamples() <= 0 || lastImportedSampleRate < 8000.0)
         return 0;
     return analyseAudioBuffer(lastImportedAudio, lastImportedSampleRate);
