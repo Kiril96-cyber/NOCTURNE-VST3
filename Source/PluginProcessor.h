@@ -109,7 +109,8 @@ private:
                                                    float accuracy,
                                                    float glide,
                                                    float vibrato,
-                                                   float stability);
+                                                   float stability,
+                                                   float confirmationDelayMs);
     float detectPitchYin(const float*, int, float& confidence, double analysisRate) const;
     void acceptPitch(float hz, float confidence, float frameRms, double time,
                      int midiSampleOffset, juce::MidiBuffer& midi);
