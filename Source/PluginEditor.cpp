@@ -445,6 +445,8 @@ NocturneAudioProcessorEditor::NocturneAudioProcessorEditor(NocturneAudioProcesso
     setupSlider(tempo, tempoLabel, "PROJECT BPM", 40, 240, 120);
     setupSlider(inputGate, inputGateLabel, "INPUT GATE (dB)", -60, -6, -42);
     inputGate.setTextValueSuffix(" dB");
+    setupSlider(confirmationDelay, confirmationDelayLabel, "NOTE CONFIRM DELAY", 0, 200, 0);
+    confirmationDelay.setTextValueSuffix(" ms");
 
     speed.onValueChange = [this]
     {
@@ -477,6 +479,12 @@ NocturneAudioProcessorEditor::NocturneAudioProcessorEditor(NocturneAudioProcesso
         if (auto* parameter = processor.parameters.getParameter("inputGateDb"))
             parameter->setValueNotifyingHost(
                 parameter->convertTo0to1((float)inputGate.getValue()));
+    };
+    confirmationDelay.onValueChange = [this]
+    {
+        if (auto* parameter = processor.parameters.getParameter("confirmationDelayMs"))
+            parameter->setValueNotifyingHost(
+                parameter->convertTo0to1((float)confirmationDelay.getValue()));
     };
 
     addAndMakeVisible(quantize);
@@ -1081,6 +1089,8 @@ void NocturneAudioProcessorEditor::resized()
     analysisMode.setBounds(drawerX + 20, 592, 210, 28);
     inputGateLabel.setBounds(drawerX + 20, 630, 210, 18);
     inputGate.setBounds(drawerX + 20, 649, 210, 26);
+    confirmationDelayLabel.setBounds(drawerX + 20, 688, 210, 18);
+    confirmationDelay.setBounds(drawerX + 20, 707, 210, 26);
     pitchLabel.setBounds(390, 112, 340, 36);
     statusLabel.setBounds(770, 716, 245, 18);
 }
