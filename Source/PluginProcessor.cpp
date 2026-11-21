@@ -727,9 +727,9 @@ int NocturneAudioProcessor::analysePolyphonicFile(const juce::AudioBuffer<float>
     constexpr int fftOrder = 12;
     constexpr int fftSize = 1 << fftOrder;
     constexpr int hopSize = 256;
-    constexpr int firstMidi = 36; // C2
+    constexpr int firstMidi = 24; // C1
     constexpr int lastMidi = 96;  // C7
-    constexpr int maxVoicesPerFrame = 5;
+    constexpr int maxVoicesPerFrame = 6;
 
     if (audio.getNumSamples() < fftSize || analysisRate < 8000.0)
         return 0;
@@ -1037,15 +1037,79 @@ int NocturneAudioProcessor::analyseAudioBuffer(const juce::AudioBuffer<float>& a
     const float gateRms = std::pow(10.0f, gateDb / 20.0f);
     int detectedCount = 0;
 
+    // Track the local energy floor so a fresh piano attack on the same pitch
+    // can be separated from the decaying tail of the previous note.
+    float previousFrameRms = 0.0f;
+    float localRmsFloor = std::numeric_limits<float>::max();
+    double lastSamePitchOnset = -1.0;
+
     for (int position = 0; position + analysisWindowSize <= totalSamples; position += hop)
     {
         const float* frameSamples = audio.getReadPointer(0) + position;
         const float frameRms = getFrameRms(frameSamples, analysisWindowSize);
+        const float priorFrameRms = previousFrameRms;
+        previousFrameRms = frameRms;
         float confidence = 0.0f;
         const float hz = frameRms >= gateRms
             ? detectPitchYin(frameSamples, analysisWindowSize, confidence, fileRate) : 0.0f;
         const int frameVelocity = velocityFromRms(frameRms, gateDb);
         const double time = (double)position / fileRate;
+
+        if (tracker.activeMidi < 0)
+            localRmsFloor = frameRms;
+        else
+            localRmsFloor = juce::jmin(localRmsFloor, frameRms);
+
+        // A same-pitch re-articulation does not create a pitch transition, so
+        // the ordinary YIN tracker would keep one long note. Detect a clear
+        // attack after an energy decay and close the old note before tracking
+        // the new articulation. A cooldown and a pitch check reduce false splits.
+        const float measuredMidi = hz > 0.0f
+            ? 69.0f + 12.0f * std::log2(hz / 440.0f) : -1.0f;
+        const bool samePitch = tracker.activeMidi >= 0 && measuredMidi >= 0.0f &&
+            std::abs(measuredMidi - (float)tracker.activeMidi) < 0.48f;
+        const bool energyAttack = priorFrameRms > gateRms * 1.5f &&
+            frameRms > priorFrameRms * 1.12f &&
+            frameRms > localRmsFloor * 1.60f &&
+            frameRms > gateRms * 2.5f;
+        const bool cooldownPassed = lastSamePitchOnset < 0.0 ||
+            time - lastSamePitchOnset >= 0.105;
+        const bool repeatedAttack = samePitch && energyAttack && cooldownPassed &&
+            time - tracker.noteStart >= 0.105;
+
+        if (repeatedAttack)
+        {
+            const auto oldChord = tracker.activeChordMidi;
+            const int oldChordCount = tracker.activeChordCount;
+            const int oldRoot = tracker.activeMidi;
+            const double oldStart = tracker.noteStart;
+            {
+                juce::ScopedLock lock(notesLock);
+                const int oldCount = oldChordCount > 0 ? oldChordCount : 1;
+                for (int i = 0; i < oldCount; ++i)
+                {
+                    const int oldMidi = oldChordCount > 0 ? oldChord[(size_t)i] : oldRoot;
+                    for (int n = notes.size() - 1; n >= 0; --n)
+                    {
+                        auto& note = notes.getReference(n);
+                        if (note.midi == oldMidi && note.start == oldStart)
+                        {
+                            note.length = juce::jmax(0.04, time - note.start);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            tracker.activeMidi = -1;
+            tracker.activeChordCount = 0;
+            tracker.candidateMidi = -1;
+            tracker.candidateFrames = 0;
+            tracker.smoothedMidi = -1.0f;
+            tracker.invalidPending = false;
+            lastSamePitchOnset = time;
+            localRmsFloor = frameRms;
+        }
 
         const auto previousChord = tracker.activeChordMidi;
         const int previousChordCount = tracker.activeChordCount;
@@ -1142,23 +1206,12 @@ int NocturneAudioProcessor::analyseAudioBuffer(const juce::AudioBuffer<float>& a
     std::stable_sort(ordered.begin(), ordered.end(),
         [](const NoteEvent& a, const NoteEvent& b) { return a.start < b.start; });
 
+    // Keep consecutive notes at the same pitch separate. They may be
+    // deliberate re-articulations (for example repeated piano keys), not
+    // duplicate fragments of one sustain.
     juce::Array<NoteEvent> cleaned;
     for (const auto& note : ordered)
-    {
-        if (!cleaned.isEmpty())
-        {
-            auto& previous = cleaned.getReference(cleaned.size() - 1);
-            const double gap = note.start - (previous.start + previous.length);
-            if (previous.midi == note.midi && gap >= -0.02 && gap <= 0.10)
-            {
-                previous.length = juce::jmax(previous.start + previous.length,
-                                             note.start + note.length) - previous.start;
-                previous.confidence = juce::jmax(previous.confidence, note.confidence);
-                continue;
-            }
-        }
         cleaned.add(note);
-    }
 
     {
         juce::ScopedLock lock(notesLock);
