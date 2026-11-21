@@ -42,6 +42,13 @@ void NocturneAudioProcessor::prepareToPlay(double sr, int)
     analysisFrame.setSize(1, analysisWindowSize);
     analysisFrame.clear();
 
+    const int recordingCacheCapacity = (int)juce::jmin(120.0 * sampleRate, 12.0 * 1024.0 * 1024.0);
+    lastRecordingAudio.setSize(1, recordingCacheCapacity);
+    lastRecordingAudio.clear();
+    lastRecordingSamples.store(0);
+    lastRecordingReady.store(false);
+    latestAudioIsRecording.store(false);
+
     writePosition = 0;
     samplesReceived = 0;
     samplesSinceAnalysis = 0;
@@ -400,11 +407,15 @@ void NocturneAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         recordingStartTime = elapsedSeconds;
         liveTracker = {};
         recordingPositionSeconds.store(0.0);
+        lastRecordingSamples.store(0);
+        lastRecordingReady.store(false);
+        latestAudioIsRecording.store(true);
     }
     else if (!isRecording && wasRecording)
     {
         finishLiveNote(elapsedSeconds - recordingStartTime, 0, midi);
         recordingPositionSeconds.store(juce::jmax(0.0, elapsedSeconds - recordingStartTime));
+        lastRecordingReady.store(lastRecordingSamples.load() > 0);
     }
     wasRecording = isRecording;
 
@@ -447,6 +458,16 @@ void NocturneAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
                     juce::jlimit(-1.0f, 1.0f, liveWaveformAccumulator / (float)liveWaveformSamples));
                 liveWaveformAccumulator = 0.0f;
                 liveWaveformSamples = 0;
+            }
+
+            if (isRecording)
+            {
+                const int cachePosition = lastRecordingSamples.load();
+                if (cachePosition < lastRecordingAudio.getNumSamples())
+                {
+                    lastRecordingAudio.setSample(0, cachePosition, monoSample);
+                    lastRecordingSamples.store(cachePosition + 1);
+                }
             }
 
             analysisBuffer.setSample(0, writePosition, monoSample);
@@ -937,11 +958,27 @@ int NocturneAudioProcessor::analyseFile(const juce::File& file)
 
     lastImportedAudio.makeCopyOf(audio);
     lastImportedSampleRate = reader->sampleRate;
+    latestAudioIsRecording.store(false);
     return analyseAudioBuffer(lastImportedAudio, lastImportedSampleRate);
 }
 
 int NocturneAudioProcessor::analyseLastAudio()
 {
+    if (latestAudioIsRecording.load())
+    {
+        if (!lastRecordingReady.load())
+            return 0;
+
+        const int cachedSamples = juce::jlimit(0, lastRecordingAudio.getNumSamples(),
+                                               lastRecordingSamples.load());
+        if (cachedSamples <= 0 || sampleRate < 8000.0)
+            return 0;
+
+        juce::AudioBuffer<float> recordedAudio(1, cachedSamples);
+        recordedAudio.copyFrom(0, 0, lastRecordingAudio, 0, 0, cachedSamples);
+        return analyseAudioBuffer(recordedAudio, sampleRate);
+    }
+
     if (lastImportedAudio.getNumSamples() <= 0 || lastImportedSampleRate < 8000.0)
         return 0;
     return analyseAudioBuffer(lastImportedAudio, lastImportedSampleRate);
