@@ -532,9 +532,6 @@ NocturneAudioProcessorEditor::NocturneAudioProcessorEditor(NocturneAudioProcesso
                 parameter->convertTo0to1((float)(analysisMode.getSelectedId() - 1)));
     };
 
-    addAndMakeVisible(pitchLabel);
-    pitchLabel.setColour(juce::Label::textColourId, violet);
-    pitchLabel.setFont(juce::Font(18.0f));
 
     addAndMakeVisible(statusLabel);
     statusLabel.setColour(juce::Label::textColourId, muted);
@@ -749,7 +746,7 @@ void NocturneAudioProcessorEditor::paint(juce::Graphics& g)
 {
     g.fillAll(bg);
 
-    const float drawerX = 1040.0f - 260.0f * settingsReveal;
+    const float drawerX = 780.0f + 260.0f * settingsReveal;
     const juce::Rectangle<float> drawerBounds(drawerX, 88.0f, 248.0f, 584.0f);
     if (settingsReveal > 0.001f)
     {
@@ -1058,7 +1055,7 @@ void NocturneAudioProcessorEditor::resized()
     clearButton.setBounds(660, 690, 90, 36);
     reanalyzeButton.setBounds(790, 142, 176, 24);
 
-    const int drawerX = 1040 - juce::roundToInt(260.0f * settingsReveal);
+    const int drawerX = 780 + juce::roundToInt(260.0f * settingsReveal);
     speedLabel.setBounds(drawerX + 20, 112, 210, 18);
     speed.setBounds(drawerX + 20, 131, 210, 26);
     accuracyLabel.setBounds(drawerX + 20, 168, 210, 18);
