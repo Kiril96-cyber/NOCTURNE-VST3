@@ -1068,14 +1068,20 @@ int NocturneAudioProcessor::analyseAudioBuffer(const juce::AudioBuffer<float>& a
             ? 69.0f + 12.0f * std::log2(hz / 440.0f) : -1.0f;
         const bool samePitch = tracker.activeMidi >= 0 && measuredMidi >= 0.0f &&
             std::abs(measuredMidi - (float)tracker.activeMidi) < 0.48f;
-        const bool energyAttack = priorFrameRms > gateRms * 1.5f &&
-            frameRms > priorFrameRms * 1.12f &&
-            frameRms > localRmsFloor * 1.60f &&
-            frameRms > gateRms * 2.5f;
+        // Piano attacks can be partly masked by the previous note's release,
+        // especially when repeated keys are played legato. The previous gate
+        // required a 12% frame-to-frame rise and 1.6x the local floor, which
+        // was too strict for overlapping note tails. Use a gentler rise, but
+        // retain a local-floor test and a minimum note age to avoid splitting
+        // ordinary vibrato or small level fluctuations.
+        const bool energyAttack = priorFrameRms > gateRms * 1.25f &&
+            frameRms > priorFrameRms * 1.045f &&
+            frameRms > localRmsFloor * 1.22f &&
+            frameRms > gateRms * 2.0f;
         const bool cooldownPassed = lastSamePitchOnset < 0.0 ||
-            time - lastSamePitchOnset >= 0.105;
+            time - lastSamePitchOnset >= 0.160;
         const bool repeatedAttack = samePitch && energyAttack && cooldownPassed &&
-            time - tracker.noteStart >= 0.105;
+            time - tracker.noteStart >= 0.160;
 
         if (repeatedAttack)
         {
