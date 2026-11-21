@@ -123,6 +123,11 @@ private:
     juce::Array<NoteEvent> notes;
     juce::AudioBuffer<float> lastImportedAudio;
     double lastImportedSampleRate = 0.0;
+    // Preallocated rolling capture cache for the most recent live recording.
+    // Audio-thread writes are bounded; analysis copies the captured range off-thread.
+    juce::AudioBuffer<float> liveRecordingAudio;
+    std::atomic<int> liveRecordedSamples { 0 };
+    std::atomic<bool> lastAudioIsRecording { false };
     int analyseAudioBuffer(const juce::AudioBuffer<float>& audio, double analysisRate);
     juce::AudioBuffer<float> analysisBuffer;
     juce::AudioBuffer<float> analysisFrame;
