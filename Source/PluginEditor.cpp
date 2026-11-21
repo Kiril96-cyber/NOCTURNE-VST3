@@ -844,7 +844,7 @@ void NocturneAudioProcessorEditor::paint(juce::Graphics& g)
         : (importedFileName.isNotEmpty()
             ? "IMPORTED SOURCE  /  " + importedFileName
             : "LIVE INPUT WAVEFORM");
-    g.drawText(waveTitle, 42, 181, 650, 15, juce::Justification::left);
+    g.drawText(waveTitle, 42, 181, 500, 15, juce::Justification::left);
 
     const float waveLeft = wave.getX() + 12.0f;
     const float waveWidth = wave.getWidth() - 24.0f;
@@ -1058,7 +1058,7 @@ void NocturneAudioProcessorEditor::resized()
     exportButton.setBounds(306, 690, 130, 36);
     dragMidiButton.setBounds(445, 688, 205, 40);
     clearButton.setBounds(660, 690, 90, 36);
-    reanalyzeButton.setBounds(770, 690, 150, 36);
+    reanalyzeButton.setBounds(560, 177, 176, 24);
 
     const int drawerX = getWidth() - juce::roundToInt(260.0f * settingsReveal);
     speedLabel.setBounds(drawerX + 20, 112, 210, 18);
