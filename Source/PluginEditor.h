@@ -195,7 +195,7 @@ private:
     int pianoTopMidi() const;
 
     NocturneAudioProcessor& processor;
-    juce::TextButton importButton { "IMPORT AUDIO" };
+    juce::TextButton importButton { "IMPORT AUDIO" };\n    juce::TextButton reanalyzeButton { "RE-ANALYZE" };
     juce::TextButton recordButton { "RECORD" };
     juce::TextButton exportButton { "EXPORT MIDI" };
     juce::TextButton clearButton { "CLEAR" };
