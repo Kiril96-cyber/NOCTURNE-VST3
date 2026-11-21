@@ -951,6 +951,8 @@ int NocturneAudioProcessor::analyseAudioBuffer(const juce::AudioBuffer<float>& a
 {
     if (audio.getNumSamples() <= 0 || fileRate < 8000.0)
         return 0;
+
+    const int totalSamples = audio.getNumSamples();
     estimateKey(audio, fileRate);
 
     const int analysisMode = (int)std::round(parameters.getRawParameterValue("analysisMode")->load());
