@@ -233,7 +233,7 @@ NocturneAudioProcessorEditor::NocturneAudioProcessorEditor(NocturneAudioProcesso
     presetSelector.addItem("PIANO  /  POLYPHONIC", 8);
     presetSelector.addItem("E-PIANO  /  POLYPHONIC", 9);
     presetSelector.addItem("STRINGS  /  PAD", 10);
-    presetSelector.setSelectedId(1, juce::dontSendNotification);
+    presetSelector.setSelectedId(processor.getSelectedPresetIndex() + 1, juce::dontSendNotification);
     presetSelector.setJustificationType(juce::Justification::centred);
     presetSelector.setColour(juce::ComboBox::backgroundColourId, panel);
     presetSelector.setColour(juce::ComboBox::textColourId, text);
@@ -680,6 +680,7 @@ void NocturneAudioProcessorEditor::applyPreset(int presetIndex)
     if (presetIndex < 0 || presetIndex >= 10)
         return;
 
+    processor.setSelectedPresetIndex(presetIndex);
     const auto& preset = presets[presetIndex];
     speed.setValue(preset.speed, juce::sendNotificationSync);
     accuracy.setValue(preset.accuracy, juce::sendNotificationSync);
