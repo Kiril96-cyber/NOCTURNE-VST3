@@ -355,7 +355,18 @@ NocturneAudioProcessorEditor::NocturneAudioProcessorEditor(NocturneAudioProcesso
         button.setColour(juce::TextButton::buttonOnColourId, violet);
     };
 
-    setupButton(importButton);\n    setupButton(reanalyzeButton);\n    reanalyzeButton.setTooltip("Run analysis again using the audio already loaded in memory");\n    reanalyzeButton.onClick = [this]\n    {\n        statusLabel.setText("RE-ANALYSING CACHED AUDIO...", juce::dontSendNotification);\n        const int count = processor.analyseLastAudio();\n        statusLabel.setText(count > 0 ? "RE-ANALYSIS COMPLETE - " + juce::String(count) + " NOTES"\n                                      : "RE-ANALYSIS FAILED - IMPORT AUDIO FIRST",\n                            juce::dontSendNotification);\n        repaint();\n    };
+    setupButton(importButton);
+    setupButton(reanalyzeButton);
+    reanalyzeButton.setTooltip("Run analysis again using the audio already loaded in memory");
+    reanalyzeButton.onClick = [this]
+    {
+        statusLabel.setText("RE-ANALYSING CACHED AUDIO...", juce::dontSendNotification);
+        const int count = processor.analyseLastAudio();
+        statusLabel.setText(count > 0 ? "RE-ANALYSIS COMPLETE - " + juce::String(count) + " NOTES"
+                                      : "RE-ANALYSIS FAILED - IMPORT AUDIO FIRST",
+                            juce::dontSendNotification);
+        repaint();
+    };
     setupButton(recordButton);
     setupButton(exportButton);
     setupButton(clearButton);
