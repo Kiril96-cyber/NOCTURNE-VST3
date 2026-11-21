@@ -172,11 +172,11 @@ bool performNativeMidiFileDrag(const juce::File& file)
 static const juce::Colour bg(0xff11100e);
 static const juce::Colour panel(0xff211e19);
 static const juce::Colour line(0xff494034);
-static const juce::Colour violet(0xffc58a43);
-static const juce::Colour text(0xffeee7dc);
-static const juce::Colour muted(0xffa99b88);
-static const juce::Colour waveformColour(0xff9a7040);
-static const juce::Colour liveColour(0xffe3ad62);
+static const juce::Colour violet(0xff7657e8);
+static const juce::Colour text(0xffeeeaff);
+static const juce::Colour muted(0xffa5a1c7);
+static const juce::Colour waveformColour(0xff4e66d8);
+static const juce::Colour liveColour(0xff59b8ff);
 
 static juce::Array<int> scaleSemitones(int scaleId)
 {
@@ -372,8 +372,8 @@ NocturneAudioProcessorEditor::NocturneAudioProcessorEditor(NocturneAudioProcesso
     setupButton(clearButton);
     setupButton(undoButton);
     setupButton(redoButton);
-    undoButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff30291f).withAlpha(0.72f));
-    redoButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff30291f).withAlpha(0.72f));
+    undoButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff20203a).withAlpha(0.72f));
+    redoButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff20203a).withAlpha(0.72f));
     undoButton.onClick = [this] { undoEdit(); };
     redoButton.onClick = [this] { redoEdit(); };
     setWantsKeyboardFocus(true);
@@ -754,9 +754,9 @@ void NocturneAudioProcessorEditor::paint(juce::Graphics& g)
         g.fillRoundedRectangle(drawerBounds, 12.0f);
         g.setColour(violet.withAlpha(0.35f * settingsReveal));
         g.drawRoundedRectangle(drawerBounds, 12.0f, 1.0f);
-        g.setColour(juce::Colour(0xffd69a4b).withAlpha((0.25f + settingsHint * 0.65f) * settingsReveal));
+        g.setColour(juce::Colour(0xff7959f5).withAlpha((0.25f + settingsHint * 0.65f) * settingsReveal));
         g.fillRoundedRectangle(drawerX + 1.0f, 104.0f, 3.0f, 548.0f, 1.5f);
-        g.setColour(juce::Colour(0xffd69a4b).withAlpha((0.12f + settingsHint * 0.42f) * settingsReveal));
+        g.setColour(juce::Colour(0xff7959f5).withAlpha((0.12f + settingsHint * 0.42f) * settingsReveal));
         g.fillRoundedRectangle(drawerX - 3.0f, 104.0f, 7.0f, 548.0f, 3.0f);
         g.setColour(text.withAlpha(settingsReveal));
         g.setFont(juce::Font(10.5f, juce::Font::bold));
@@ -765,9 +765,9 @@ void NocturneAudioProcessorEditor::paint(juce::Graphics& g)
 
     // Persistent neon edge cue marks the hidden settings drawer.
     const float edgePulse = 0.5f + 0.5f * std::sin(neonPhase * 1.4f);
-    g.setColour(juce::Colour(0xffd69a4b).withAlpha(0.45f + settingsHint * 0.45f + edgePulse * 0.12f));
+    g.setColour(juce::Colour(0xff7959f5).withAlpha(0.45f + settingsHint * 0.45f + edgePulse * 0.12f));
     g.fillRoundedRectangle(1037.0f, 112.0f, 2.0f, 500.0f, 1.0f);
-    g.setColour(juce::Colour(0xffd69a4b).withAlpha(0.10f + settingsHint * 0.22f));
+    g.setColour(juce::Colour(0xff7959f5).withAlpha(0.10f + settingsHint * 0.22f));
     g.fillRoundedRectangle(1033.0f, 112.0f, 6.0f, 500.0f, 3.0f);
 
     if (settingsReveal > 0.02f)
@@ -799,8 +799,8 @@ void NocturneAudioProcessorEditor::paint(juce::Graphics& g)
         const juce::String glyph = logo.substring(i, i + 1);
         const float glyphWidth = logoFont.getStringWidthFloat(glyph);
         const float wave = 0.5f + 0.5f * std::sin(neonPhase - (float)i * 0.68f);
-        const auto neon = juce::Colour(0xffb77a35).interpolatedWith(
-            juce::Colour(0xffffd28a), wave);
+        const auto neon = juce::Colour(0xff5943d8).interpolatedWith(
+            juce::Colour(0xff70c5ff), wave);
         const juce::Rectangle<int> glyphBounds(
             (int)glyphX, 18, (int)std::ceil(glyphWidth + 2.0f), 38);
 
@@ -1003,7 +1003,7 @@ void NocturneAudioProcessorEditor::paint(juce::Graphics& g)
         const float vx = roll.getX() + 8.0f +
             (float)((note.start - visibleStart) / visibleDuration) * (roll.getWidth() - 16.0f);
         const float barHeight = 20.0f * (float)juce::jlimit(1, 127, note.velocity) / 127.0f;
-        g.setColour(juce::Colour(0xffd49a4c).withAlpha(0.92f));
+        g.setColour(juce::Colour(0xff7657e8).withAlpha(0.92f));
         g.fillRoundedRectangle(vx - 1.5f, 640.0f - barHeight, 3.0f, barHeight, 1.2f);
     }
     }
