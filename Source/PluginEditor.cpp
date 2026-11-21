@@ -695,10 +695,12 @@ void NocturneAudioProcessorEditor::timerCallback()
     const float level = processor.inputLevel.load();
     neonPhase += 0.075f;
 
-    // Reveal the settings drawer when the pointer reaches the right edge or enters it.
+    // Use hysteresis around the edge: opening expands the host window, so the
+    // pointer's relative X coordinate must not make the drawer immediately close.
     const auto pointer = getMouseXYRelative();
-    settingsOpen = pointer.x >= getWidth() - 22 ||
-                   (settingsReveal > 0.02f && pointer.x >= getWidth() - 278);
+    settingsOpen = settingsReveal > 0.02f
+        ? pointer.x >= 1008
+        : pointer.x >= 1018;
     const float targetReveal = settingsOpen ? 1.0f : 0.0f;
     if (settingsOpen && getWidth() < 1300) setSize(1300, getHeight());
     settingsReveal += (targetReveal - settingsReveal) * 0.24f;
@@ -746,8 +748,8 @@ void NocturneAudioProcessorEditor::paint(juce::Graphics& g)
 {
     g.fillAll(bg);
 
-    const float drawerX = 780.0f + 260.0f * settingsReveal;
-    const juce::Rectangle<float> drawerBounds(drawerX, 88.0f, 248.0f, 584.0f);
+    const float drawerX = 1040.0f + 260.0f * (1.0f - settingsReveal);
+    const juce::Rectangle<float> drawerBounds(drawerX, 88.0f, 248.0f, 646.0f);
     if (settingsReveal > 0.001f)
     {
         g.setColour(juce::Colour(0xff1b1915).withAlpha(0.97f * settingsReveal));
@@ -776,7 +778,7 @@ void NocturneAudioProcessorEditor::paint(juce::Graphics& g)
             BinaryData::nocturne_background_jpg, BinaryData::nocturne_background_jpgSize);
         if (backgroundImage.isValid())
         {
-            const int artX = 1040 - juce::roundToInt(252.0f * settingsReveal);
+            const int artX = 1040 + juce::roundToInt(260.0f * (1.0f - settingsReveal));
             const juce::Rectangle<int> artBounds(artX + 4, 108, 240, 548);
             g.setColour(bg.withAlpha(0.35f * settingsReveal));
             g.fillRoundedRectangle(artBounds.toFloat(), 12.0f);
@@ -1055,7 +1057,9 @@ void NocturneAudioProcessorEditor::resized()
     clearButton.setBounds(660, 690, 90, 36);
     reanalyzeButton.setBounds(790, 142, 176, 24);
 
-    const int drawerX = 780 + juce::roundToInt(260.0f * settingsReveal);
+    // The drawer lives entirely in the extra 260 px wing. At zero reveal all
+    // controls are outside the host window; at full reveal they start at x=1040.
+    const int drawerX = 1040 + juce::roundToInt(260.0f * (1.0f - settingsReveal));
     speedLabel.setBounds(drawerX + 20, 112, 210, 18);
     speed.setBounds(drawerX + 20, 131, 210, 26);
     accuracyLabel.setBounds(drawerX + 20, 168, 210, 18);
