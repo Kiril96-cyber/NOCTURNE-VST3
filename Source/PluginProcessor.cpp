@@ -1107,8 +1107,11 @@ int NocturneAudioProcessor::analyseAudioBuffer(const juce::AudioBuffer<float>& a
         const auto captured = getNotesCopy();
         ordered.reserve((size_t)captured.size());
         for (const auto& note : captured)
-            if (note.length >= 0.045)
+        {
+            // Reject very short, low-confidence pitch ghosts while preserving articulated notes.
+            if (note.length >= 0.065 && note.confidence >= 0.54f)
                 ordered.push_back(note);
+        }
     }
     std::stable_sort(ordered.begin(), ordered.end(),
         [](const NoteEvent& a, const NoteEvent& b) { return a.start < b.start; });
