@@ -816,22 +816,18 @@ void NocturneAudioProcessorEditor::paint(juce::Graphics& g)
         glyphX += glyphWidth;
     }
 
+    const auto& mascot = juce::ImageCache::getFromMemory(
+        BinaryData::nocturne_parrot_mascot_png, BinaryData::nocturne_parrot_mascot_pngSize);
+    if (mascot.isValid())
+        g.drawImageWithin(mascot, 884, 2, 82, 78, juce::RectanglePlacement::centred);
+
     g.setColour(muted);
     g.setFont(11.0f);
     g.drawText("AUDIO  /  MIDI STUDIO", 30, 54, 380, 18, juce::Justification::left);
     g.setColour(line);
     g.drawLine(28, 82, (float)getWidth() - 28, 82, 1.0f);
 
-    g.setColour(panel.withAlpha(0.90f));
-    g.fillRoundedRectangle(28, 98, 720, 58, 8);
-    g.setColour(muted);
-    g.setFont(11.0f);
-    g.drawText("LIVE PITCH", 44, 106, 100, 16, juce::Justification::left);
-    g.setColour(text);
-    g.setFont(16.0f);
-    g.drawText(pitchLabel.getText(), 44, 125, 650, 24, juce::Justification::left);
-
-    const juce::Rectangle<float> wave(28, 174, 720, 104);
+    const juce::Rectangle<float> wave(28, 98, 950, 112);
     g.setColour(panel.withAlpha(0.88f));
     g.fillRoundedRectangle(wave, 8);
 
@@ -843,12 +839,12 @@ void NocturneAudioProcessorEditor::paint(juce::Graphics& g)
         : (importedFileName.isNotEmpty()
             ? "IMPORTED SOURCE  /  " + importedFileName
             : "LIVE INPUT WAVEFORM");
-    g.drawText(waveTitle, 42, 181, 500, 15, juce::Justification::left);
+    g.drawText(waveTitle, 42, 104, 620, 15, juce::Justification::left);
 
     const float waveLeft = wave.getX() + 12.0f;
     const float waveWidth = wave.getWidth() - 24.0f;
-    const float waveMid = wave.getCentreY() + 10.0f;
-    const float waveAmp = 32.0f;
+    const float waveMid = wave.getCentreY() + 12.0f;
+    const float waveAmp = 38.0f;
     g.setColour(line);
     g.drawLine(waveLeft, waveMid, waveLeft + waveWidth, waveMid, 1.0f);
 
@@ -1025,7 +1021,7 @@ void NocturneAudioProcessorEditor::paint(juce::Graphics& g)
     g.drawText("NOTES  " + juce::String(noteEvents.size()) +
                "     " + detectedKeyText(processor) +
                "     BPM " + juce::String(processor.bpm.load(), 1),
-               42, 662, 640, 11, juce::Justification::left);
+               42, 650, 820, 11, juce::Justification::left);
 
     g.setColour(line);
     g.drawLine(28, 676, 978.0f, 676, 1.0f);
@@ -1101,7 +1097,7 @@ void NocturneAudioProcessorEditor::mouseDown(const juce::MouseEvent& event)
 
     const auto notesNow = processor.getNotesCopy();
     const auto roll = pianoBounds();
-    const juce::Rectangle<float> velocityBounds(30.0f, 586.0f, 680.0f, 34.0f);
+    const juce::Rectangle<float> velocityBounds(30.0f, 610.0f, 900.0f, 34.0f);
     double totalTime = 8.0;
     for (const auto& n : notesNow) totalTime = juce::jmax(totalTime, n.start + n.length);
     const double visibleDuration = 8.0 / (double)pianoZoom;
