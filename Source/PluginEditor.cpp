@@ -1180,7 +1180,7 @@ void NocturneAudioProcessorEditor::mouseDrag(const juce::MouseEvent& event)
     if (noteDragMode == NoteDragMode::velocity && velocityNote >= 0)
     {
         const int value = juce::jlimit(1, 127,
-            (int)std::round((660.0f - event.position.y) / 20.0f * 127.0f));
+            (int)std::round((640.0f - event.position.y) / 20.0f * 127.0f));
         processor.setNoteVelocity(velocityNote, value);
         repaint();
         return;
