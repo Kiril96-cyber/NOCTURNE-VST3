@@ -216,9 +216,9 @@ private:
     juce::Label presetLabel;
     juce::Slider pianoScrollX, pianoScrollY;
     juce::Label pianoScrollXLabel, pianoScrollYLabel;
-    juce::Slider speed, accuracy, glide, vibrato, stability, tempo, inputGate;
+    juce::Slider speed, accuracy, glide, vibrato, stability, tempo, inputGate, confirmationDelay;
     juce::ComboBox quantize, chordMode, analysisMode;
-    juce::Label speedLabel, accuracyLabel, glideLabel, vibratoLabel, stabilityLabel, tempoLabel, inputGateLabel;
+    juce::Label speedLabel, accuracyLabel, glideLabel, vibratoLabel, stabilityLabel, tempoLabel, inputGateLabel, confirmationDelayLabel;
     juce::Label quantizeLabel, chordModeLabel, analysisModeLabel, pitchLabel, statusLabel;
 
     std::vector<float> waveform;
