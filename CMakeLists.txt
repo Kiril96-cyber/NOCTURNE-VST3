@@ -5,6 +5,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 include(FetchContent)
 FetchContent_Declare(JUCE GIT_REPOSITORY https://github.com/juce-framework/JUCE.git GIT_TAG 8.0.6)
 FetchContent_MakeAvailable(JUCE)
+juce_add_binary_data(NOCTURNEAssets SOURCES Resources/nocturne_background.jpg)
 juce_add_plugin(NOCTURNE
     COMPANY_NAME "NOCTURNE Audio"
     PLUGIN_MANUFACTURER_CODE Nctn
@@ -18,5 +19,28 @@ juce_add_plugin(NOCTURNE
     COPY_PLUGIN_AFTER_BUILD FALSE)
 target_sources(NOCTURNE PRIVATE Source/PluginProcessor.cpp Source/PluginEditor.cpp)
 target_compile_definitions(NOCTURNE PUBLIC JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
-target_link_libraries(NOCTURNE PRIVATE juce::juce_audio_utils juce::juce_audio_processors juce::juce_dsp)
+target_link_libraries(NOCTURNE PRIVATE juce::juce_audio_utils juce::juce_audio_processors juce::juce_dsp NOCTURNEAssets)
+if(WIN32)
+    target_link_libraries(NOCTURNE PRIVATE ole32 shell32)
+endif()
 juce_generate_juce_header(NOCTURNE)
+
+# Headless/offline command-line analyzer used by the regression test harness.
+juce_add_console_app(NOCTURNEAnalyzer
+    PRODUCT_NAME "NOCTURNE Offline Analyzer")
+target_include_directories(NOCTURNEAnalyzer PRIVATE Source)
+target_sources(NOCTURNEAnalyzer PRIVATE
+    Source/PluginProcessor.cpp
+    Source/PluginEditor.cpp
+    Tests/NOCTURNEAnalyzerMain.cpp)
+juce_add_binary_data(NOCTURNEAnalyzerAssets SOURCES Resources/nocturne_background.jpg)
+target_compile_definitions(NOCTURNEAnalyzer PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+target_link_libraries(NOCTURNEAnalyzer PRIVATE
+    juce::juce_audio_utils
+    juce::juce_audio_processors
+    juce::juce_dsp
+    NOCTURNEAnalyzerAssets)
+if(WIN32)
+    target_link_libraries(NOCTURNEAnalyzer PRIVATE ole32 shell32)
+endif()
+juce_generate_juce_header(NOCTURNEAnalyzer)
