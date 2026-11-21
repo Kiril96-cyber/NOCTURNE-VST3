@@ -25,10 +25,13 @@ public:
     void setCurrentProgram(int) override {}
     const juce::String getProgramName(int) override { return {}; }
     void changeProgramName(int, const juce::String&) override {}
-    void getStateInformation(juce::MemoryBlock&) override {}
-    void setStateInformation(const void*, int) override {}
+    void getStateInformation(juce::MemoryBlock& destData) override;
+    void setStateInformation(const void* data, int sizeInBytes) override;
+    void setSelectedPresetIndex(int index) { selectedPresetIndex.store(juce::jlimit(0, 9, index)); }
+    int getSelectedPresetIndex() const { return selectedPresetIndex.load(); }
 
     juce::AudioProcessorValueTreeState parameters;
+    std::atomic<int> selectedPresetIndex { 0 };
 
     struct NoteEvent
     {
