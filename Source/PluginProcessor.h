@@ -41,7 +41,8 @@ public:
 
     juce::Array<NoteEvent> getNotesCopy() const;
     void clearNotes();
-    int analyseFile(const juce::File&);\n    int analyseLastAudio();
+    int analyseFile(const juce::File&);
+    int analyseLastAudio();
     void exportMidi(const juce::File&);
     bool copyMidiToClipboard(void* clipboardOwnerWindow);
     juce::File createTemporaryMidiFile();
@@ -120,7 +121,10 @@ private:
 
     juce::CriticalSection notesLock;
     juce::Array<NoteEvent> notes;
-    juce::AudioBuffer<float> lastImportedAudio;\n    double lastImportedSampleRate = 0.0;\n    int analyseAudioBuffer(const juce::AudioBuffer<float>& audio, double analysisRate);\n    juce::AudioBuffer<float> analysisBuffer;
+    juce::AudioBuffer<float> lastImportedAudio;
+    double lastImportedSampleRate = 0.0;
+    int analyseAudioBuffer(const juce::AudioBuffer<float>& audio, double analysisRate);
+    juce::AudioBuffer<float> analysisBuffer;
     juce::AudioBuffer<float> analysisFrame;
     PitchTrackerState liveTracker;
 
