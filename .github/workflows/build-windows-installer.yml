@@ -3,6 +3,8 @@ name: Build NOCTURNE Windows VST3 installer
 on:
   workflow_dispatch:
   push:
+    branches: [ "main", "fix/live-recording-pitch-stability" ]
+  pull_request:
     branches: [ "main" ]
 
 permissions:
@@ -23,8 +25,15 @@ jobs:
       - name: Configure JUCE project
         run: cmake -S . -B build -A x64
 
-      - name: Build VST3
+      - name: Build VST3 and offline analyzer
         run: cmake --build build --config Release --parallel
+
+      - name: Upload offline analyzer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: NOCTURNE-Offline-Analyzer-Windows-x64
+          path: build/NOCTURNEAnalyzer_artefacts/Release/NOCTURNEAnalyzer.exe
+          if-no-files-found: error
 
       - name: Install Inno Setup
         run: choco install innosetup --yes --no-progress
