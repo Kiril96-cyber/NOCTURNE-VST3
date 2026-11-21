@@ -24,3 +24,22 @@ if(WIN32)
     target_link_libraries(NOCTURNE PRIVATE ole32 shell32)
 endif()
 juce_generate_juce_header(NOCTURNE)
+
+# Headless/offline command-line analyzer used by the regression test harness.
+juce_add_console_app(NOCTURNEAnalyzer
+    PRODUCT_NAME "NOCTURNE Offline Analyzer")
+target_sources(NOCTURNEAnalyzer PRIVATE
+    Source/PluginProcessor.cpp
+    Source/PluginEditor.cpp
+    Tests/NOCTURNEAnalyzerMain.cpp)
+juce_add_binary_data(NOCTURNEAnalyzerAssets SOURCES Resources/nocturne_background.jpg)
+target_compile_definitions(NOCTURNEAnalyzer PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+target_link_libraries(NOCTURNEAnalyzer PRIVATE
+    juce::juce_audio_utils
+    juce::juce_audio_processors
+    juce::juce_dsp
+    NOCTURNEAnalyzerAssets)
+if(WIN32)
+    target_link_libraries(NOCTURNEAnalyzer PRIVATE ole32 shell32)
+endif()
+juce_generate_juce_header(NOCTURNEAnalyzer)
