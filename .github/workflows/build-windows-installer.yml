@@ -28,6 +28,13 @@ jobs:
       - name: Build VST3 and offline analyzer
         run: cmake --build build --config Release --parallel
 
+      - name: Upload offline analyzer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: NOCTURNE-Offline-Analyzer-Windows-x64
+          path: build/NOCTURNEAnalyzer_artefacts/Release/NOCTURNEAnalyzer.exe
+          if-no-files-found: error
+
       - name: Install Inno Setup
         run: choco install innosetup --yes --no-progress
 
