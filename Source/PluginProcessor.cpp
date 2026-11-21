@@ -935,7 +935,22 @@ int NocturneAudioProcessor::analyseFile(const juce::File& file)
         mono[sample] = sum / (float)sourceChannels;
     }
 
-    const double fileRate = reader->sampleRate;
+    lastImportedAudio.makeCopyOf(audio);
+    lastImportedSampleRate = reader->sampleRate;
+    return analyseAudioBuffer(lastImportedAudio, lastImportedSampleRate);
+}
+
+int NocturneAudioProcessor::analyseLastAudio()
+{
+    if (lastImportedAudio.getNumSamples() <= 0 || lastImportedSampleRate < 8000.0)
+        return 0;
+    return analyseAudioBuffer(lastImportedAudio, lastImportedSampleRate);
+}
+
+int NocturneAudioProcessor::analyseAudioBuffer(const juce::AudioBuffer<float>& audio, double fileRate)
+{
+    if (audio.getNumSamples() <= 0 || fileRate < 8000.0)
+        return 0;
     estimateKey(audio, fileRate);
 
     const int analysisMode = (int)std::round(parameters.getRawParameterValue("analysisMode")->load());
