@@ -169,14 +169,14 @@ bool performNativeMidiFileDrag(const juce::File& file)
 }
 #endif
 
-static const juce::Colour bg(0xff101016);
-static const juce::Colour panel(0xff191923);
-static const juce::Colour line(0xff343044);
-static const juce::Colour violet(0xff9c83c7);
-static const juce::Colour text(0xffe8e3ef);
-static const juce::Colour muted(0xff938ba3);
-static const juce::Colour waveformColour(0xff6c5b88);
-static const juce::Colour liveColour(0xffb39adf);
+static const juce::Colour bg(0xff11100e);
+static const juce::Colour panel(0xff211e19);
+static const juce::Colour line(0xff494034);
+static const juce::Colour violet(0xffc58a43);
+static const juce::Colour text(0xffeee7dc);
+static const juce::Colour muted(0xffa99b88);
+static const juce::Colour waveformColour(0xff9a7040);
+static const juce::Colour liveColour(0xffe3ad62);
 
 static juce::Array<int> scaleSemitones(int scaleId)
 {
@@ -250,7 +250,7 @@ NocturneAudioProcessorEditor::NocturneAudioProcessorEditor(NocturneAudioProcesso
         button.setButtonText(glyph);
         button.setColour(juce::TextButton::buttonColourId, panel);
         button.setColour(juce::TextButton::buttonOnColourId, violet.withAlpha(0.35f));
-        button.setColour(juce::TextButton::textColourOffId, juce::Colour(0xffd9caff));
+        button.setColour(juce::TextButton::textColourOffId, juce::Colour(0xffffd8a0));
         button.setColour(juce::TextButton::textColourOnId, text);
         button.setTooltip(glyph == juce::String("‹") ? "Previous preset" : "Next preset");
         addAndMakeVisible(button);
@@ -333,7 +333,7 @@ NocturneAudioProcessorEditor::NocturneAudioProcessorEditor(NocturneAudioProcesso
     pianoScrollX.setRange(0.0, 1.0, 0.001);
     pianoScrollX.setValue(0.0, juce::dontSendNotification);
     pianoScrollX.setColour(juce::Slider::trackColourId, violet);
-    pianoScrollX.setColour(juce::Slider::thumbColourId, juce::Colour(0xffc9a8ff));
+    pianoScrollX.setColour(juce::Slider::thumbColourId, juce::Colour(0xffffc878));
     pianoScrollX.setTooltip("Scroll Piano Roll horizontally through the timeline");
     pianoScrollX.onValueChange = [this] { repaint(); };
 
@@ -343,7 +343,7 @@ NocturneAudioProcessorEditor::NocturneAudioProcessorEditor(NocturneAudioProcesso
     pianoScrollY.setRange(23.0, 127.0, 1.0);
     pianoScrollY.setValue(84.0, juce::dontSendNotification);
     pianoScrollY.setColour(juce::Slider::trackColourId, violet);
-    pianoScrollY.setColour(juce::Slider::thumbColourId, juce::Colour(0xffc9a8ff));
+    pianoScrollY.setColour(juce::Slider::thumbColourId, juce::Colour(0xffffc878));
     pianoScrollY.setTooltip("Scroll Piano Roll vertically through pitches");
     pianoScrollY.onValueChange = [this] { repaint(); };
 
@@ -372,8 +372,8 @@ NocturneAudioProcessorEditor::NocturneAudioProcessorEditor(NocturneAudioProcesso
     setupButton(clearButton);
     setupButton(undoButton);
     setupButton(redoButton);
-    undoButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff26212f).withAlpha(0.72f));
-    redoButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff26212f).withAlpha(0.72f));
+    undoButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff30291f).withAlpha(0.72f));
+    redoButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff30291f).withAlpha(0.72f));
     undoButton.onClick = [this] { undoEdit(); };
     redoButton.onClick = [this] { redoEdit(); };
     setWantsKeyboardFocus(true);
@@ -763,13 +763,13 @@ void NocturneAudioProcessorEditor::paint(juce::Graphics& g)
     const juce::Rectangle<float> drawerBounds(drawerX, 88.0f, 248.0f, 584.0f);
     if (settingsReveal > 0.001f)
     {
-        g.setColour(juce::Colour(0xff17151f).withAlpha(0.97f * settingsReveal));
+        g.setColour(juce::Colour(0xff1b1915).withAlpha(0.97f * settingsReveal));
         g.fillRoundedRectangle(drawerBounds, 12.0f);
         g.setColour(violet.withAlpha(0.35f * settingsReveal));
         g.drawRoundedRectangle(drawerBounds, 12.0f, 1.0f);
-        g.setColour(juce::Colour(0xffb68aff).withAlpha((0.25f + settingsHint * 0.65f) * settingsReveal));
+        g.setColour(juce::Colour(0xffd69a4b).withAlpha((0.25f + settingsHint * 0.65f) * settingsReveal));
         g.fillRoundedRectangle(drawerX + 1.0f, 104.0f, 3.0f, 548.0f, 1.5f);
-        g.setColour(juce::Colour(0xffb68aff).withAlpha((0.12f + settingsHint * 0.42f) * settingsReveal));
+        g.setColour(juce::Colour(0xffd69a4b).withAlpha((0.12f + settingsHint * 0.42f) * settingsReveal));
         g.fillRoundedRectangle(drawerX - 3.0f, 104.0f, 7.0f, 548.0f, 3.0f);
         g.setColour(text.withAlpha(settingsReveal));
         g.setFont(juce::Font(10.5f, juce::Font::bold));
@@ -778,9 +778,9 @@ void NocturneAudioProcessorEditor::paint(juce::Graphics& g)
 
     // Persistent neon edge cue marks the hidden settings drawer.
     const float edgePulse = 0.5f + 0.5f * std::sin(neonPhase * 1.4f);
-    g.setColour(juce::Colour(0xffb68aff).withAlpha(0.45f + settingsHint * 0.45f + edgePulse * 0.12f));
+    g.setColour(juce::Colour(0xffd69a4b).withAlpha(0.45f + settingsHint * 0.45f + edgePulse * 0.12f));
     g.fillRoundedRectangle((float)getWidth() - 3.0f, 112.0f, 2.0f, 500.0f, 1.0f);
-    g.setColour(juce::Colour(0xffb68aff).withAlpha(0.10f + settingsHint * 0.22f));
+    g.setColour(juce::Colour(0xffd69a4b).withAlpha(0.10f + settingsHint * 0.22f));
     g.fillRoundedRectangle((float)getWidth() - 7.0f, 112.0f, 6.0f, 500.0f, 3.0f);
 
     if (settingsReveal > 0.02f)
@@ -812,8 +812,8 @@ void NocturneAudioProcessorEditor::paint(juce::Graphics& g)
         const juce::String glyph = logo.substring(i, i + 1);
         const float glyphWidth = logoFont.getStringWidthFloat(glyph);
         const float wave = 0.5f + 0.5f * std::sin(neonPhase - (float)i * 0.68f);
-        const auto neon = juce::Colour(0xffb68aff).interpolatedWith(
-            juce::Colour(0xff42dcff), wave);
+        const auto neon = juce::Colour(0xffb77a35).interpolatedWith(
+            juce::Colour(0xffffd28a), wave);
         const juce::Rectangle<int> glyphBounds(
             (int)glyphX, 18, (int)std::ceil(glyphWidth + 2.0f), 38);
 
@@ -910,7 +910,7 @@ void NocturneAudioProcessorEditor::paint(juce::Graphics& g)
 
     const auto roll = pianoBounds();
     const juce::Rectangle<float> rollFrame(24.0f, 280.0f, 730.0f, 397.0f);
-    g.setColour(juce::Colour(0xff17151f).withAlpha(0.96f));
+    g.setColour(juce::Colour(0xff1b1915).withAlpha(0.96f));
     g.fillRoundedRectangle(rollFrame, 10.0f);
     g.setColour(violet.withAlpha(0.62f));
     g.drawRoundedRectangle(rollFrame, 10.0f, 1.2f);
@@ -939,7 +939,7 @@ void NocturneAudioProcessorEditor::paint(juce::Graphics& g)
         }
         else
         {
-            g.setColour(juce::Colour(0xff08070d).withAlpha(0.19f));
+            g.setColour(juce::Colour(0xff100f0c).withAlpha(0.19f));
             g.fillRect(roll.getX(), roll.getY() + row * rowHeight, roll.getWidth(), rowHeight);
         }
     }
@@ -1019,7 +1019,7 @@ void NocturneAudioProcessorEditor::paint(juce::Graphics& g)
         const float vx = roll.getX() + 8.0f +
             (float)((note.start - visibleStart) / visibleDuration) * (roll.getWidth() - 16.0f);
         const float barHeight = 20.0f * (float)juce::jlimit(1, 127, note.velocity) / 127.0f;
-        g.setColour(juce::Colour(0xff9c79e8).withAlpha(0.92f));
+        g.setColour(juce::Colour(0xffd49a4c).withAlpha(0.92f));
         g.fillRoundedRectangle(vx - 1.5f, 616.0f - barHeight, 3.0f, barHeight, 1.2f);
     }
     }
