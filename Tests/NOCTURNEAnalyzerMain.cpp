@@ -27,8 +27,6 @@ int main(int argc, char* argv[])
 
     NocturneAudioProcessor processor;
     processor.parameters.getParameter("analysisMode")->setValueNotifyingHost(mode == "poly" ? 1.0f : 0.0f);
-    processor.parameters.getParameter("inputGateDb")->setValueNotifyingHost(
-        processor.parameters.getParameterRange("inputGateDb").convertTo0to1(-48.0f));
     processor.bpm.store(120.0f);
     processor.quantizeDivision.store(0);
 
