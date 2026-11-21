@@ -123,6 +123,13 @@ private:
     juce::Array<NoteEvent> notes;
     juce::AudioBuffer<float> lastImportedAudio;
     double lastImportedSampleRate = 0.0;
+
+    // Preallocated mono cache for the most recent live take (up to 120 seconds).
+    // The audio thread writes into this buffer; RE-ANALYZE reads it only after recording stops.
+    juce::AudioBuffer<float> lastRecordingAudio;
+    std::atomic<int> lastRecordingSamples { 0 };
+    std::atomic<bool> lastRecordingReady { false };
+    std::atomic<bool> latestAudioIsRecording { false };
     int analyseAudioBuffer(const juce::AudioBuffer<float>& audio, double analysisRate);
     juce::AudioBuffer<float> analysisBuffer;
     juce::AudioBuffer<float> analysisFrame;
