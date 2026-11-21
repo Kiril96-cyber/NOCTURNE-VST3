@@ -17,6 +17,28 @@ NocturneAudioProcessor::NocturneAudioProcessor()
 {
 }
 
+void NocturneAudioProcessor::getStateInformation(juce::MemoryBlock& destData)
+{
+    auto state = parameters.copyState();
+    state.setProperty("selectedPresetIndex", selectedPresetIndex.load(), nullptr);
+    if (auto xml = state.createXml())
+        copyXmlToBinary(*xml, destData);
+}
+
+void NocturneAudioProcessor::setStateInformation(const void* data, int sizeInBytes)
+{
+    if (auto xml = getXmlFromBinary(data, sizeInBytes))
+    {
+        const auto restored = juce::ValueTree::fromXml(*xml);
+        if (restored.isValid() && restored.hasType(parameters.state.getType()))
+        {
+            parameters.replaceState(restored);
+            selectedPresetIndex.store(juce::jlimit(0, 9,
+                (int)restored.getProperty("selectedPresetIndex", 0)));
+        }
+    }
+}
+
 juce::AudioProcessorValueTreeState::ParameterLayout NocturneAudioProcessor::createParams()
 {
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> p;
