@@ -26,6 +26,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout NocturneAudioProcessor::crea
     p.push_back(std::make_unique<juce::AudioParameterFloat>("vibrato", "Vibrato tolerance", 0.0f, 100.0f, 55.0f));
     p.push_back(std::make_unique<juce::AudioParameterFloat>("stability", "Transition stability", 0.0f, 100.0f, 35.0f));
     p.push_back(std::make_unique<juce::AudioParameterFloat>("inputGateDb", "Input gate (dB)", -60.0f, -6.0f, -42.0f));
+    p.push_back(std::make_unique<juce::AudioParameterFloat>("confirmationDelayMs", "Note confirmation delay (ms)", 0.0f, 200.0f, 0.0f));
     p.push_back(std::make_unique<juce::AudioParameterChoice>(
         "analysisMode", "Analysis mode", juce::StringArray { "VOCAL", "POLYPHONIC" }, 0));
     p.push_back(std::make_unique<juce::AudioParameterChoice>(
@@ -194,7 +195,7 @@ NocturneAudioProcessor::ChordNotes NocturneAudioProcessor::makeChordNotes(int ro
 
 NocturneAudioProcessor::PitchTrackerEvents NocturneAudioProcessor::updatePitchTracker(
     PitchTrackerState& state, float hz, float confidence, double time,
-    float accuracy, float glide, float vibrato, float stability)
+    float accuracy, float glide, float vibrato, float stability, float confirmationDelayMs)
 {
     PitchTrackerEvents events;
 
@@ -259,7 +260,8 @@ NocturneAudioProcessor::PitchTrackerEvents NocturneAudioProcessor::updatePitchTr
         ++state.candidateFrames;
     }
 
-    if (state.candidateFrames < confirmations)
+    if (state.candidateFrames < confirmations ||
+        time - state.candidateStart < (double)juce::jlimit(0.0f, 200.0f, confirmationDelayMs) * 0.001)
         return events;
     if (state.activeMidi >= 0 && time - state.noteStart < minimumSwitchHold)
         return events;
@@ -320,6 +322,7 @@ void NocturneAudioProcessor::acceptPitch(float hz, float confidence, float frame
     const float glide = parameters.getRawParameterValue("glide")->load();
     const float vibrato = parameters.getRawParameterValue("vibrato")->load();
     const float stability = parameters.getRawParameterValue("stability")->load();
+    const float confirmationDelayMs = parameters.getRawParameterValue("confirmationDelayMs")->load();
     const int chordMode = (int)std::round(parameters.getRawParameterValue("chordMode")->load());
 
     const auto previousChord = liveTracker.activeChordMidi;
@@ -328,7 +331,7 @@ void NocturneAudioProcessor::acceptPitch(float hz, float confidence, float frame
     const int previousRoot = liveTracker.activeMidi;
 
     const auto events = updatePitchTracker(liveTracker, hz, confidence, time,
-                                            accuracy, glide, vibrato, stability);
+                                            accuracy, glide, vibrato, stability, confirmationDelayMs);
 
     if (events.closed)
     {
@@ -1006,6 +1009,7 @@ int NocturneAudioProcessor::analyseAudioBuffer(const juce::AudioBuffer<float>& a
     const float glide = parameters.getRawParameterValue("glide")->load() * 0.35f;
     const float vibrato = parameters.getRawParameterValue("vibrato")->load() * 0.65f;
     const float stability = parameters.getRawParameterValue("stability")->load() * 0.35f;
+    const float confirmationDelayMs = parameters.getRawParameterValue("confirmationDelayMs")->load();
     const int chordMode = (int)std::round(parameters.getRawParameterValue("chordMode")->load());
     const float gateDb = parameters.getRawParameterValue("inputGateDb")->load();
     const float gateRms = std::pow(10.0f, gateDb / 20.0f);
@@ -1027,7 +1031,7 @@ int NocturneAudioProcessor::analyseAudioBuffer(const juce::AudioBuffer<float>& a
         const int previousRoot = tracker.activeMidi;
 
         const auto events = updatePitchTracker(tracker, hz, confidence, time,
-                                                accuracy, glide, vibrato, stability);
+                                                accuracy, glide, vibrato, stability, confirmationDelayMs);
 
         juce::ScopedLock lock(notesLock);
         if (events.closed)
