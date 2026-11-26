@@ -45,11 +45,19 @@ NocturneAudioProcessorEditor::NocturneAudioProcessorEditor(NocturneAudioProcesso
     glide.onValueChange = [this] { if (auto* p = processor.parameters.getParameter("glide")) p->setValueNotifyingHost(p->convertTo0to1((float)glide.getValue())); };
     vibrato.onValueChange = [this] { if (auto* p = processor.parameters.getParameter("vibrato")) p->setValueNotifyingHost(p->convertTo0to1((float)vibrato.getValue())); };
     tempo.onValueChange = [this] { processor.bpm.store((float)tempo.getValue()); };
+    speed.setValue(processor.parameters.getRawParameterValue("speed")->load(), juce::dontSendNotification);
+    accuracy.setValue(processor.parameters.getRawParameterValue("accuracy")->load(), juce::dontSendNotification);
+    glide.setValue(processor.parameters.getRawParameterValue("glide")->load(), juce::dontSendNotification);
+    vibrato.setValue(processor.parameters.getRawParameterValue("vibrato")->load(), juce::dontSendNotification);
+    tempo.setValue(processor.bpm.load(), juce::dontSendNotification);
 
     addAndMakeVisible(quantize); addAndMakeVisible(quantizeLabel);
     quantizeLabel.setText("MIDI QUANTIZE", juce::dontSendNotification); quantizeLabel.setColour(juce::Label::textColourId, muted);
     quantize.addItem("OFF", 1); quantize.addItem("1/4", 2); quantize.addItem("1/8", 3); quantize.addItem("1/16", 4); quantize.addItem("1/32", 5);
     quantize.setSelectedId(1); quantize.onChange = [this] { const int id = quantize.getSelectedId(); const int divisions[] = { 0, 4, 8, 16, 32 }; processor.quantizeDivision.store(divisions[juce::jlimit(0, 4, id - 1)]); };
+    const int savedDivision = processor.quantizeDivision.load();
+    const int savedId = savedDivision == 0 ? 1 : savedDivision == 4 ? 2 : savedDivision == 8 ? 3 : savedDivision == 16 ? 4 : 5;
+    quantize.setSelectedId(savedId, juce::dontSendNotification);
 
     addAndMakeVisible(pitchLabel); pitchLabel.setColour(juce::Label::textColourId, violet); pitchLabel.setFont(juce::Font(18.0f));
     addAndMakeVisible(statusLabel); statusLabel.setColour(juce::Label::textColourId, muted);
