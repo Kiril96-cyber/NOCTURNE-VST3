@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "PolyphonicAnalyzer.h"
 
 NocturneAudioProcessor::NocturneAudioProcessor()
  : AudioProcessor(BusesProperties().withInput("Input", juce::AudioChannelSet::stereo(), true)
@@ -79,51 +80,132 @@ void NocturneAudioProcessor::acceptPitch(float hz, float confidence, double time
 void NocturneAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
     juce::ScopedNoDenormals noDenormals;
-    const int samples=buffer.getNumSamples();
-    float peak=0;
-    for(int c=0;c<buffer.getNumChannels();++c) peak=juce::jmax(peak,buffer.getMagnitude(c,0,samples));
+    const int samples = buffer.getNumSamples();
+    float peak = 0.0f;
+    for (int channel = 0; channel < buffer.getNumChannels(); ++channel)
+        peak = juce::jmax(peak, buffer.getMagnitude(channel, 0, samples));
     inputLevel.store(peak);
-    if(buffer.getNumChannels()>0) {
-        auto* in=buffer.getReadPointer(0);
-        const int window=2048;
-        for(int i=0;i<samples;++i) {
-            analysisBuffer.setSample(0,filled++,in[i]);
+
+    constexpr int window = 2048;
+    const float speed = parameters.getRawParameterValue("speed")->load();
+    const int hop = juce::jlimit(128, 1024, (int)(sampleRate * (0.05f - speed * 0.0004f)));
+
+    if (!recording.load() && activeMidi >= 0)
+    {
+        midi.addEvent(juce::MidiMessage::noteOff(1, activeMidi), 0);
+        {
+            juce::ScopedLock lock(notesLock);
+            if (!notes.isEmpty())
+                notes.getReference(notes.size() - 1).length = juce::jmax(0.04, elapsed - noteStart);
+        }
+        activeMidi = -1;
+        lastMidiFloat = -1.0f;
+    }
+
+    if (buffer.getNumChannels() > 0)
+    {
+        const auto* input = buffer.getReadPointer(0);
+        for (int i = 0; i < samples; ++i)
+        {
+            if (filled < window)
+                analysisBuffer.setSample(0, filled++, input[i]);
+
+            elapsed += 1.0 / sampleRate;
             ++hopCounter;
-            if(filled>=window) {
-                float conf=0; float hz=detectPitchYin(analysisBuffer.getReadPointer(0),window,conf);
+            if (filled >= window && hopCounter >= hop)
+            {
+                float confidence = 0.0f;
+                const float hz = detectPitchYin(analysisBuffer.getReadPointer(0), window, confidence);
                 currentPitchHz.store(hz);
-                if(recording.load()) acceptPitch(hz,conf,elapsed,i,midi);
-                filled=0;
+                if (recording.load())
+                    acceptPitch(hz, confidence, elapsed - (double)window / (2.0 * sampleRate), i, midi);
+
+                for (int sample = 0; sample < window - hop; ++sample)
+                    analysisBuffer.setSample(0, sample, analysisBuffer.getSample(0, sample + hop));
+                filled = window - hop;
+                hopCounter = 0;
             }
-            if(hopCounter>=juce::jmax(128,(int)(sampleRate*60.0/(*parameters.getRawParameterValue("speed")*100.0)))) hopCounter=0;
-            elapsed += 1.0/sampleRate;
         }
     }
-    // When RECORD is active, detected note transitions are emitted as host MIDI events.
-    // The plugin is configured as a MIDI-output-capable VST3; route its MIDI output
-    // to an instrument track in the host when using live capture.
 }
+
+void NocturneAudioProcessor::getStateInformation(juce::MemoryBlock& destData)
+{
+    auto state = parameters.copyState();
+    state.setProperty("bpm", bpm.load(), nullptr);
+    state.setProperty("quantizeDivision", quantizeDivision.load(), nullptr);
+    juce::ValueTree noteList("NOTES");
+    {
+        juce::ScopedLock lock(notesLock);
+        for (const auto& note : notes)
+        {
+            juce::ValueTree item("NOTE");
+            item.setProperty("midi", note.midi, nullptr);
+            item.setProperty("start", note.start, nullptr);
+            item.setProperty("length", note.length, nullptr);
+            item.setProperty("confidence", note.confidence, nullptr);
+            noteList.addChild(item, -1, nullptr);
+        }
+    }
+    state.addChild(noteList, -1, nullptr);
+    if (auto xml = state.createXml())
+        copyXmlToBinary(*xml, destData);
+}
+
+void NocturneAudioProcessor::setStateInformation(const void* data, int sizeInBytes)
+{
+    if (auto xml = getXmlFromBinary(data, sizeInBytes))
+    {
+        auto state = juce::ValueTree::fromXml(*xml);
+        if (state.isValid() && state.hasType(parameters.state.getType()))
+        {
+            parameters.replaceState(state);
+            bpm.store((float)state.getProperty("bpm", 120.0f));
+            quantizeDivision.store((int)state.getProperty("quantizeDivision", 0));
+            juce::ScopedLock lock(notesLock);
+            notes.clear();
+            auto noteList = state.getChildWithName("NOTES");
+            for (int i = 0; i < noteList.getNumChildren(); ++i)
+            {
+                auto item = noteList.getChild(i);
+                notes.add({
+                    (int)item.getProperty("midi", 60),
+                    (double)item.getProperty("start", 0.0),
+                    (double)item.getProperty("length", 0.1),
+                    (float)item.getProperty("confidence", 0.0f)
+                });
+            }
+            activeMidi = -1;
+            lastMidiFloat = -1.0f;
+        }
+    }
+}
+
 juce::Array<NocturneAudioProcessor::NoteEvent> NocturneAudioProcessor::getNotesCopy() const
 { juce::ScopedLock l(notesLock); return notes; }
 void NocturneAudioProcessor::clearNotes()
 { juce::ScopedLock l(notesLock); notes.clear(); activeMidi=-1; lastMidiFloat=-1; elapsed=0; }
 void NocturneAudioProcessor::analyseFile(const juce::File& file)
 {
-    juce::AudioFormatManager fm; fm.registerBasicFormats();
+    juce::AudioFormatManager fm;
+    fm.registerBasicFormats();
     std::unique_ptr<juce::AudioFormatReader> reader(fm.createReaderFor(file));
-    if(!reader) return;
-    juce::AudioBuffer<float> audio(1,(int)reader->lengthInSamples);
-    reader->read(&audio,0,audio.getNumSamples(),0,true,true);
-    const double oldRate=sampleRate; sampleRate=reader->sampleRate;
-    clearNotes(); const int win=2048, hop=512;
-    double t=0;
-    for(int pos=0;pos+win<audio.getNumSamples();pos+=hop) {
-        float conf=0; float hz=detectPitchYin(audio.getReadPointer(0)+pos,win,conf);
-        juce::MidiBuffer ignoredMidi;
-        acceptPitch(hz,conf,t,0,ignoredMidi); t+=(double)hop/sampleRate;
+    if (!reader || reader->lengthInSamples <= 0 || reader->lengthInSamples > (int64)reader->sampleRate * 60 * 15)
+        return;
+
+    const int channels = juce::jlimit(1, 2, (int)reader->numChannels);
+    juce::AudioBuffer<float> audio(channels, (int)reader->lengthInSamples);
+    if (!reader->read(&audio, 0, audio.getNumSamples(), 0, true, true))
+        return;
+
+    clearNotes();
+    NocturnePolyphonicAnalyzer analyzer;
+    const auto detected = analyzer.analyse(audio, reader->sampleRate, 0.035f, 5);
+    {
+        juce::ScopedLock lock(notesLock);
+        for (const auto& event : detected)
+            notes.add({ event.midi, event.start, event.length, event.confidence });
     }
-    if(activeMidi>=0) { juce::ScopedLock l(notesLock); if(!notes.isEmpty()) notes.getReference(notes.size()-1).length=juce::jmax(0.05,t-noteStart); activeMidi=-1; }
-    sampleRate=oldRate;
 }
 void NocturneAudioProcessor::moveNote(int index, int midi, double start)
 {
