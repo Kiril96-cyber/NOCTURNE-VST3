@@ -148,7 +148,7 @@ void NocturneAudioProcessor::analyseFile(const juce::File& file)
 
     clearNotes();
     NocturnePolyphonicAnalyzer analyzer;
-    const auto detected = analyzer.analyse(audio, reader->sampleRate, 0.22f, 5);
+    const auto detected = analyzer.analyse(audio, reader->sampleRate, 0.035f, 5);
     {
         juce::ScopedLock lock(notesLock);
         for (const auto& event : detected)
