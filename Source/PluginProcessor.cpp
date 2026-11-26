@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "PolyphonicAnalyzer.h"
 
 NocturneAudioProcessor::NocturneAudioProcessor()
  : AudioProcessor(BusesProperties().withInput("Input", juce::AudioChannelSet::stereo(), true)
@@ -109,21 +110,25 @@ void NocturneAudioProcessor::clearNotes()
 { juce::ScopedLock l(notesLock); notes.clear(); activeMidi=-1; lastMidiFloat=-1; elapsed=0; }
 void NocturneAudioProcessor::analyseFile(const juce::File& file)
 {
-    juce::AudioFormatManager fm; fm.registerBasicFormats();
+    juce::AudioFormatManager fm;
+    fm.registerBasicFormats();
     std::unique_ptr<juce::AudioFormatReader> reader(fm.createReaderFor(file));
-    if(!reader) return;
-    juce::AudioBuffer<float> audio(1,(int)reader->lengthInSamples);
-    reader->read(&audio,0,audio.getNumSamples(),0,true,true);
-    const double oldRate=sampleRate; sampleRate=reader->sampleRate;
-    clearNotes(); const int win=2048, hop=512;
-    double t=0;
-    for(int pos=0;pos+win<audio.getNumSamples();pos+=hop) {
-        float conf=0; float hz=detectPitchYin(audio.getReadPointer(0)+pos,win,conf);
-        juce::MidiBuffer ignoredMidi;
-        acceptPitch(hz,conf,t,0,ignoredMidi); t+=(double)hop/sampleRate;
+    if (!reader || reader->lengthInSamples <= 0 || reader->lengthInSamples > (int64)reader->sampleRate * 60 * 15)
+        return;
+
+    const int channels = juce::jlimit(1, 2, (int)reader->numChannels);
+    juce::AudioBuffer<float> audio(channels, (int)reader->lengthInSamples);
+    if (!reader->read(&audio, 0, audio.getNumSamples(), 0, true, true))
+        return;
+
+    clearNotes();
+    NocturnePolyphonicAnalyzer analyzer;
+    const auto detected = analyzer.analyse(audio, reader->sampleRate, 0.22f, 5);
+    {
+        juce::ScopedLock lock(notesLock);
+        for (const auto& event : detected)
+            notes.add({ event.midi, event.start, event.length, event.confidence });
     }
-    if(activeMidi>=0) { juce::ScopedLock l(notesLock); if(!notes.isEmpty()) notes.getReference(notes.size()-1).length=juce::jmax(0.05,t-noteStart); activeMidi=-1; }
-    sampleRate=oldRate;
 }
 void NocturneAudioProcessor::moveNote(int index, int midi, double start)
 {
