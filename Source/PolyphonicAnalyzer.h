@@ -56,7 +56,7 @@ public:
                 residual[(size_t)k] = frame[(size_t)k];
                 total += frame[(size_t)k];
             }
-            if (total < 1.0e-5f) continue;
+
 
             std::array<bool, 128> detected {};
             std::array<float, 128> frameConfidence {};
@@ -80,7 +80,7 @@ public:
                     // Prefer fundamentals with coherent harmonic support.
                     if (score > bestScore) { bestScore = score; bestMidi = note; }
                 }
-                if (bestMidi < 0 || bestScore / total < sensitivity) break;
+                if (bestMidi < 0 || total < 1.0e-5f || bestScore / total < sensitivity) break;
                 if (detected[(size_t)bestMidi]) break;
                 detected[(size_t)bestMidi] = true;
                 frameConfidence[(size_t)bestMidi] = juce::jlimit(0.0f, 1.0f, bestScore / (total * 0.65f));
