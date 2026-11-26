@@ -129,6 +129,58 @@ void NocturneAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     }
 }
 
+void NocturneAudioProcessor::getStateInformation(juce::MemoryBlock& destData)
+{
+    auto state = parameters.copyState();
+    state.setProperty("bpm", bpm.load(), nullptr);
+    state.setProperty("quantizeDivision", quantizeDivision.load(), nullptr);
+    juce::ValueTree noteList("NOTES");
+    {
+        juce::ScopedLock lock(notesLock);
+        for (const auto& note : notes)
+        {
+            juce::ValueTree item("NOTE");
+            item.setProperty("midi", note.midi, nullptr);
+            item.setProperty("start", note.start, nullptr);
+            item.setProperty("length", note.length, nullptr);
+            item.setProperty("confidence", note.confidence, nullptr);
+            noteList.addChild(item, -1, nullptr);
+        }
+    }
+    state.addChild(noteList, -1, nullptr);
+    if (auto xml = state.createXml())
+        copyXmlToBinary(*xml, destData);
+}
+
+void NocturneAudioProcessor::setStateInformation(const void* data, int sizeInBytes)
+{
+    if (auto xml = getXmlFromBinary(data, sizeInBytes))
+    {
+        auto state = juce::ValueTree::fromXml(*xml);
+        if (state.isValid() && state.hasType(parameters.state.getType()))
+        {
+            parameters.replaceState(state);
+            bpm.store((float)state.getProperty("bpm", 120.0f));
+            quantizeDivision.store((int)state.getProperty("quantizeDivision", 0));
+            juce::ScopedLock lock(notesLock);
+            notes.clear();
+            auto noteList = state.getChildWithName("NOTES");
+            for (int i = 0; i < noteList.getNumChildren(); ++i)
+            {
+                auto item = noteList.getChild(i);
+                notes.add({
+                    (int)item.getProperty("midi", 60),
+                    (double)item.getProperty("start", 0.0),
+                    (double)item.getProperty("length", 0.1),
+                    (float)item.getProperty("confidence", 0.0f)
+                });
+            }
+            activeMidi = -1;
+            lastMidiFloat = -1.0f;
+        }
+    }
+}
+
 juce::Array<NocturneAudioProcessor::NoteEvent> NocturneAudioProcessor::getNotesCopy() const
 { juce::ScopedLock l(notesLock); return notes; }
 void NocturneAudioProcessor::clearNotes()
