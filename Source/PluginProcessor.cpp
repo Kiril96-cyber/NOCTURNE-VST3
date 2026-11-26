@@ -120,7 +120,8 @@ void NocturneAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
                 if (recording.load())
                     acceptPitch(hz, confidence, elapsed - (double)window / (2.0 * sampleRate), i, midi);
 
-                analysisBuffer.copyFrom(0, 0, analysisBuffer, 0, hop, window - hop);
+                for (int sample = 0; sample < window - hop; ++sample)
+                    analysisBuffer.setSample(0, sample, analysisBuffer.getSample(0, sample + hop));
                 filled = window - hop;
                 hopCounter = 0;
             }
