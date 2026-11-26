@@ -21,9 +21,7 @@ public:
         constexpr int maxHarmonics = 8;
         juce::dsp::FFT fft(13);
         std::vector<float> frame((size_t)fftSize * 2, 0.0f);
-        std::array<float, fftSize / 2> spectrum {};
         std::array<float, fftSize / 2> residual {};
-        std::array<float, maxMidi + 1> salience {};
         std::array<bool, 128> present {};
         std::array<int, 128> missing {};
         std::array<double, 128> starts {};
@@ -32,9 +30,6 @@ public:
         const int length = audio.getNumSamples();
         if (length < fftSize || sampleRate <= 0.0) return events;
         const int voices = juce::jlimit(1, 8, maxVoices);
-        const float minHz = 65.4064f;
-        const float maxHz = 2093.0045f;
-        juce::ignoreUnused(minHz, maxHz);
 
         for (int pos = 0; pos + fftSize <= length; pos += hop)
         {
@@ -52,7 +47,6 @@ public:
             float total = 0.0f;
             for (int k = 1; k < fftSize / 2; ++k)
             {
-                spectrum[(size_t)k] = frame[(size_t)k];
                 residual[(size_t)k] = frame[(size_t)k];
                 total += frame[(size_t)k];
             }
