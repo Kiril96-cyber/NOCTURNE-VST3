@@ -1,4 +1,5 @@
 #include "PluginEditor.h"
+#include <utility>
 
 static std::pair<int, int> visibleMidiRange(const juce::Array<NocturneAudioProcessor::NoteEvent>& notes)
 {
