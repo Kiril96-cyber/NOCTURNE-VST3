@@ -41,3 +41,11 @@ See `INSTALLER_RU.md`. On Windows, run `build_installer_windows.bat` from the VS
 
 ## Автоматическая сборка Windows EXE через GitHub Actions
 См. `BUILD_ON_GITHUB_RU.md`. Workflow `.github/workflows/build-windows-installer.yml` собирает VST3 на Windows Server 2022 и публикует `NOCTURNE_Setup_x64.exe` в Artifacts.
+
+## NOCTURNE PRO analysis update
+
+The imported-audio path includes an original harmonic-salience analyzer with iterative spectral masking and up to five simultaneous note candidates. The piano-roll view adapts its visible pitch range to the detected material. The live-input path remains a separate monophonic YIN-style detector with overlapping windows; it is not yet polyphonic.
+
+Project state stores plugin parameters, tempo, quantization selection, and detected note events.
+
+**Validation status:** this is an experimental analysis foundation, not a claim of commercial-grade transcription accuracy or parity with noteGRABBER 2. Audio-quality benchmarking against reference WAV/MIDI pairs and Windows DAW runtime testing are still required. The implementation is original and does not include proprietary noteGRABBER code.
