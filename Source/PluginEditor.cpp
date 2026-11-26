@@ -1,5 +1,24 @@
 #include "PluginEditor.h"
 
+static std::pair<int, int> visibleMidiRange(const juce::Array<NocturneAudioProcessor::NoteEvent>& notes)
+{
+    int top = 84, bottom = 60;
+    if (!notes.isEmpty())
+    {
+        top = 0; bottom = 127;
+        for (const auto& note : notes) { top = juce::jmax(top, note.midi); bottom = juce::jmin(bottom, note.midi); }
+        top = juce::jmin(127, top + 2); bottom = juce::jmax(0, bottom - 2);
+        while (top - bottom + 1 < 24)
+        {
+            if (top < 127) ++top;
+            if (top - bottom + 1 >= 24) break;
+            if (bottom > 0) --bottom;
+            if (top == 127 && bottom == 0) break;
+        }
+    }
+    return { top, bottom };
+}
+
 static const juce::Colour bg(0xff101016), panel(0xff191923), line(0xff343044), violet(0xff9c83c7), text(0xffe8e3ef), muted(0xff938ba3), waveformColour(0xff6c5b88);
 
 NocturneAudioProcessorEditor::NocturneAudioProcessorEditor(NocturneAudioProcessor& p) : AudioProcessorEditor(&p), processor(p)
@@ -125,7 +144,7 @@ void NocturneAudioProcessorEditor::paint(juce::Graphics& g)
 {
     g.fillAll(bg);
     g.setColour(violet); g.setFont(juce::Font(27.0f, juce::Font::bold)); g.drawText("NOCTURNE", 28, 18, 260, 38, juce::Justification::left);
-    g.setColour(muted); g.setFont(11.0f); g.drawText("MONOPHONIC AUDIO → MIDI  /  DARK EDITION", 30, 54, 380, 18, juce::Justification::left);
+    g.setColour(muted); g.setFont(11.0f); g.drawText("POLYPHONIC FILE  •  MONOPHONIC LIVE  /  DARK EDITION", 30, 54, 380, 18, juce::Justification::left);
     g.setColour(line); g.drawLine(28, 82, (float)getWidth() - 28, 82, 1.0f);
     g.setColour(panel); g.fillRoundedRectangle(28, 98, 720, 58, 8);
     g.setColour(muted); g.setFont(11.0f); g.drawText("LIVE PITCH", 44, 106, 100, 16, juce::Justification::left);
@@ -148,11 +167,14 @@ void NocturneAudioProcessorEditor::paint(juce::Graphics& g)
     // Editable piano roll
     auto roll=pianoBounds(); g.setColour(panel); g.fillRoundedRectangle(roll, 8);
     g.setColour(muted); g.setFont(10.5f); g.drawText("PIANO ROLL  /  DRAG NOTES TO CHANGE PITCH & POSITION", 42, 286, 520, 15, juce::Justification::left);
-    const int rows=24; const float rowH=roll.getHeight()/rows;
-    for(int r=0;r<=rows;++r) { float y=roll.getY()+r*rowH; g.setColour((r%12==0)?line.withAlpha(0.9f):line.withAlpha(0.35f)); g.drawHorizontalLine((int)y,roll.getX(),roll.getRight()); }
+    auto notes=processor.getNotesCopy();
+    const auto pitchRange = visibleMidiRange(notes);
+    const int topMidi = pitchRange.first, bottomMidi = pitchRange.second;
+    const int rows = topMidi - bottomMidi + 1;
+    const float rowH = roll.getHeight() / (float)rows;
+    for (int r = 0; r <= rows; ++r) { float y=roll.getY()+r*rowH; g.setColour((r%12==0)?line.withAlpha(0.9f):line.withAlpha(0.35f)); g.drawHorizontalLine((int)y,roll.getX(),roll.getRight()); }
     for(int c=1;c<8;++c) { float x=roll.getX()+roll.getWidth()*c/8.0f; g.setColour(line.withAlpha(0.5f)); g.drawVerticalLine((int)x,roll.getY(),roll.getBottom()); }
-    auto notes=processor.getNotesCopy(); double maxTime=8.0; for(const auto& n:notes) maxTime=juce::jmax(maxTime,n.start+n.length);
-    const int topMidi=84;
+    double maxTime=8.0; for(const auto& n:notes) maxTime=juce::jmax(maxTime,n.start+n.length);
     for(int i=0;i<notes.size();++i) {
         const auto& n=notes.getReference(i);
         float nx=roll.getX()+8+(float)(n.start/maxTime)*(roll.getWidth()-16);
@@ -179,7 +201,10 @@ void NocturneAudioProcessorEditor::resized()
 void NocturneAudioProcessorEditor::mouseDown(const juce::MouseEvent& e)
 {
     auto roll=pianoBounds(); if(!roll.contains(e.position)) return;
-    auto notes=processor.getNotesCopy(); const int topMidi=84; const float rowH=roll.getHeight()/24.0f;
+    auto notes=processor.getNotesCopy();
+    const auto pitchRange = visibleMidiRange(notes);
+    const int topMidi = pitchRange.first, bottomMidi = pitchRange.second;
+    const float rowH = roll.getHeight() / (float)(topMidi - bottomMidi + 1);
     double maxTime=8.0; for(const auto& n:notes) maxTime=juce::jmax(maxTime,n.start+n.length);
     for(int i=notes.size()-1;i>=0;--i) {
         const auto& n=notes.getReference(i); float x=roll.getX()+8+(float)(n.start/maxTime)*(roll.getWidth()-16); float w=juce::jmax(8.0f,(float)(n.length/maxTime)*(roll.getWidth()-16));
@@ -192,8 +217,10 @@ void NocturneAudioProcessorEditor::mouseDrag(const juce::MouseEvent& e)
     if(draggedNote<0) return;
     auto roll=pianoBounds(); auto notes=processor.getNotesCopy(); if(!juce::isPositiveAndBelow(draggedNote,notes.size())) return;
     double maxTime=8.0; for(const auto& n:notes) maxTime=juce::jmax(maxTime,n.start+n.length);
-    const float rowH=roll.getHeight()/24.0f; const int topMidi=84;
-    int midi=topMidi-(int)std::floor((e.position.y-roll.getY())/rowH);
+    const auto pitchRange = visibleMidiRange(notes);
+    const int topMidi = pitchRange.first, bottomMidi = pitchRange.second;
+    const float rowH = roll.getHeight() / (float)(topMidi - bottomMidi + 1);
+    int midi=juce::jlimit(bottomMidi, topMidi, topMidi-(int)std::floor((e.position.y-roll.getY())/rowH));
     double start=((e.position.x-roll.getX()-8)/(roll.getWidth()-16))*maxTime-dragOffsetSeconds;
     processor.moveNote(draggedNote,midi,start); repaint();
 }
